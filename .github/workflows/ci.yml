@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: The state machine under strict C99, and the trace replayed after its flipped copies fail
+        run: mkdir -p "$RUNNER_TEMP/zr" && BIN="$RUNNER_TEMP/zr" CC=gcc bash scripts/zone-relay-check.sh
+      - name: The relay on sockets and under drifting clocks, after its planted defects show
+        run: mkdir -p "$RUNNER_TEMP/zn" && BIN="$RUNNER_TEMP/zn" CC=gcc bash scripts/zone-net-check.sh

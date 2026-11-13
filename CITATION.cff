@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "transport-zone-relay"
+abstract: "The zone relay in C: a state machine equal to the router model on a recorded trace, attached to two UDP sockets and a 64 Hz tick, with a load generator."
+type: software
+authors:
+  - family-names: "Lee"
+    given-names: "K. S. Ernest (iFire)"
+license: MIT
+repository-code: "https://github.com/V-Sekai-fire/transport-zone-relay"
+date-released: "2026-11-13"
