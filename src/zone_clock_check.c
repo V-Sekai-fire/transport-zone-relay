@@ -20,15 +20,16 @@ int main(void) {
       long jitter = (long)(lcg >> 8) % 801 - 400;
       if ((next[s] + jitter) / MILLI > t) continue;
       for (int half = 0; half < 2; half++) { sent++; if (!zr_put(&z, s, half, frame, sizeof frame)) refused++; }
-      if (sent % 200 == 0) { floods++; if (!zr_put(&z, s, 0, frame, sizeof frame)) floods_refused++; }
+      if (sent % 200 == 0)
+        for (int k = 0; k < 3; k++) { floods++; if (!zr_put(&z, s, 0, frame, sizeof frame)) floods_refused++; }
       next[s] += ZR_SEND_TICKS * MILLI + ZR_SEND_TICKS * skew_ppm[s] / 1000;
     }
     zr_tick(&z);
   }
   printf("LEDGER honest_sent=%ld honest_refused=%ld floods=%ld floods_refused=%ld unread=%llu\n", sent, refused, floods, floods_refused,
          (unsigned long long)zr_unread(&z));
-  if (floods_refused != floods) { puts("RESULT: FAIL a flood was taken"); return 1; }
   if (refused != 0) { puts("RESULT: FAIL an honest frame was refused"); return 1; }
+  if (floods_refused * 3 != floods * 2) { puts("RESULT: FAIL a flood got more than its one frame of burst through"); return 1; }
   puts("RESULT: PASS");
   return 0;
 }

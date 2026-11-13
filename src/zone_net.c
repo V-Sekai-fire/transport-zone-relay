@@ -54,8 +54,9 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
   fd[0] = bind_udp(host, port);
   fd[1] = bind_udp(host, (uint16_t)(port + 1));
   if (fd[0] < 0 || fd[1] < 0) { if (fd[0] >= 0) close(fd[0]); if (fd[1] >= 0) close(fd[1]); return -EADDRINUSE; }
-  int64_t next = now_ns() + ZN_TICK_NS;
-  for (uint32_t t = 0; t < ticks; t++) {
+  int64_t start = now_ns(), next = start + ZN_TICK_NS;
+  uint32_t counted = 0, rounds = 0;
+  for (uint32_t t = 0; counted < ticks; t++, rounds++) {
     int64_t d = next - now_ns();
     if (d > 0) { struct timespec r; r.tv_sec = (time_t)(d / 1000000000LL); r.tv_nsec = (long)(d % 1000000000LL); nanosleep(&r, 0); }
     int64_t t0 = now_ns(), first = -1;
@@ -92,16 +93,26 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
       }
     }
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
-    for (int z = 0; z < (people + ZR_SLOTS - 1) / ZR_SLOTS; z++) zr_tick(&zones[z]);
     int64_t t1 = now_ns();
+    uint32_t wall = (uint32_t)((t1 - start) / ZN_TICK_NS);
+    if (wall <= counted) wall = counted + 1;
+    if (wall > counted + 1) out->overruns++;
+#ifdef ZN_PLANT_NO_CATCH_UP
+    wall = counted + 1;
+#endif
+    for (; counted < wall; counted++)
+      for (int z = 0; z < (people + ZR_SLOTS - 1) / ZR_SLOTS; z++) zr_tick(&zones[z]);
     lat[t] = t1 - (first >= 0 ? first : t0);
     if (first >= 0) out->work_ns += t1 - first;
-    if (t1 > next + ZN_TICK_NS) { out->overruns++; next = t1 + ZN_TICK_NS; } else next += ZN_TICK_NS;
+    next = start + (int64_t)(counted + 1) * ZN_TICK_NS;
+#ifdef ZN_PLANT_NO_CATCH_UP
+    next = t1 + ZN_TICK_NS;
+#endif
   }
-  out->ticks = ticks; out->people = (uint32_t)people;
+  out->ticks = counted; out->people = (uint32_t)people;
   for (int z = 0; z < (people + ZR_SLOTS - 1) / ZR_SLOTS; z++) out->unread += zr_unread(&zones[z]);
-  qsort(lat, ticks, sizeof(int64_t), cmp);
-  out->p50_ns = lat[ticks / 2]; out->p95_ns = lat[(ticks * 95u) / 100]; out->p99_ns = lat[(ticks * 99u) / 100]; out->max_ns = lat[ticks - 1];
+  qsort(lat, rounds, sizeof(int64_t), cmp);
+  out->p50_ns = lat[rounds / 2]; out->p95_ns = lat[(rounds * 95u) / 100]; out->p99_ns = lat[(rounds * 99u) / 100]; out->max_ns = lat[rounds - 1];
   close(fd[0]); close(fd[1]);
   return 0;
 }

@@ -78,10 +78,10 @@ Threads and sockets on a desktop are too uneven to compare two rules, so the rul
 frames is checked without them. `zone_clock_check.c` drives the state machine for 19,200 ticks
 with four clients whose clocks start at different moments, run 1,000 and 100 parts in a million
 fast and slow, and arrive up to 0.4 of a tick early or late by a fixed pseudo-random sequence.
-Every 200th frame is followed by a flood frame on the same tick. It passes when no honest frame
-is refused and every flood frame is.
+Every 200th frame is followed by three flood frames on the same tick. It passes when no honest
+frame is refused and two of every three flood frames are.
 
-A half is open again 5 ticks after the frame it last took (`OPEN_TICKS`), counted on the relay's own clock from that frame and from nothing else.
+A half takes one frame in 5 ticks (`OPEN_TICKS`) with a burst of two, on the relay's own clock. Each half has a due time. A frame is refused while now is more than 5 ticks short of the due time; a frame that is taken moves the due time 5 ticks on from now, or from the due time if that is later.
 
 The rule before this one opened slot `s` on the tick where the relay's `now % 6` was a fixed phase. A client keeps its own clock, so its sends drift across that tick, and then one interval got two pairs and the next none. Run on real sockets for the first time, the relay refused 7 honest frames of 320. Five ticks and not six, so that a frame one tick early is still taken; a flood gets at most six frames through in five intervals.
 
@@ -90,8 +90,22 @@ Measured, on the same sequence:
 
 | Rule | Honest frames sent | Honest frames refused | Flood frames refused |
 | --- | --- | --- | --- |
-| open 5 ticks after the last frame | 25,602 | 0 | 128 of 128 |
-| open on a fixed tick of the relay's clock | 25,602 | 1,894 | 128 of 128 |
+| one frame in 5 ticks, burst of two | 25,602 | 0 | 256 of 384 |
+| open on a fixed tick of the relay's clock | 25,602 | 1,894 | 384 of 384 |
+
+A flood here is three frames on the tick of an honest one. One of the three is the burst and
+gets through; two are refused, every time.
+
+## A relay that falls behind
+
+The rule before this one opened a half 5 ticks after the frame it last took. That was right for a relay that keeps its clock and wrong for one that falls behind it. A relay under load works in batches, and two honest frames that left their sender 6 ticks apart can reach its hands 3 apart. Run beside 16 people of the load generator, the relay refused 1,777 honest frames and nobody saw anybody. A burst of two lets the second of such a pair through, and the rate still holds a flood to one frame in 5 ticks.
+
+The socket layer also counts its ticks by the wall and not by its rounds: after a round that
+took longer than a tick it ticks every zone once for each tick the wall has had.
+
+The check runs the relay with 25 ms of planted work in every round, more than a tick and a
+half. It passes when no honest frame is refused and every viewer still gets its frames. A relay
+built with `-DZN_PLANT_NO_CATCH_UP`, which counts one tick a round, must fail it.
 
 ## The sweep
 

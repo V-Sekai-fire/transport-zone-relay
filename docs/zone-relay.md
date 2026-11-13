@@ -35,7 +35,7 @@ before any other call.
 | `zr_join(z, person) -> slot or -1` | The slot the person holds. A person who is already seated gets the same slot, and the silence of that slot is not reset. A new person gets the lowest empty slot and is heard as of `now`. -1 when all four are taken. |
 | `zr_leave(z, person) -> 0 or 1` | Frees the person's slot and blanks its two frames. 0 when the person holds no slot. |
 | `zr_person_at(z, slot) -> person or -1` | The person in a slot, -1 for an empty slot. |
-| `zr_put(z, slot, half, bytes, len) -> 0 or 1` | Stores one frame for a half (0 or 1) of a slot. A half is open again 5 ticks after the frame it last took (`OPEN_TICKS`), counted on the relay's own clock from that frame and from nothing else. A frame that comes sooner is refused and counted in `zr_unread`, and its bytes are not copied, so a flood makes the relay do less. A put to a slot above 3, a half above 1 or an empty slot is refused and not counted. A taken frame marks the slot as heard at `now`. |
+| `zr_put(z, slot, half, bytes, len) -> 0 or 1` | Stores one frame for a half (0 or 1) of a slot. A half takes one frame in 5 ticks (`OPEN_TICKS`) with a burst of two, on the relay's own clock. Each half has a due time. A frame is refused while now is more than 5 ticks short of the due time; a frame that is taken moves the due time 5 ticks on from now, or from the due time if that is later. A frame that comes sooner is refused and counted in `zr_unread`, and its bytes are not copied, so a flood makes the relay do less. A put to a slot above 3, a half above 1 or an empty slot is refused and not counted. A taken frame marks the slot as heard at `now`. |
 | `zr_frame(z, viewer, k, &len) -> pointer` | Frame `k` of 6 for a viewer: the two halves of each other slot, in slot order. `k / 2` picks the other slot and `k % 2` the half. The pointer is into the zone and holds `len` bytes; it is valid until the next call that changes the zone. An empty slot gives 1,200 zero bytes. |
 | `zr_tick(z) -> now` | One tick. It adds 1 to `now` and empties a slot when `now` minus the tick it was last heard is above 192. It visits all four slots whoever is present. It opens nothing: a half opens by the age of its last frame. |
 | `zr_unread(z)` | The count of frames refused because their half had taken a frame under 5 ticks before. |
@@ -52,8 +52,7 @@ The relay copies the model line for line, and these follow. Each one is in the c
   answers the lowest empty slot and seats nobody. `zr_leave(z, -1)` answers 1 when a slot is
   empty. A caller must not use -1 as a person.
 - A leave, or an emptying by silence, does not open the halves of the slot. A person who takes
-  the slot has a put of a half refused and counted until 5 ticks after the frame the person
-  before put there.
+  the slot meets the due time the person before left there.
 - `zr_frame` does not check the viewer. A viewer above 3 gets what viewer 3 gets, and a negative
   viewer gets what viewer 0 gets. The slot is in range for every viewer, so no call reads outside
   the zone. The trace holds viewers 4 and 255. It cannot hold a negative viewer; the model was
@@ -129,7 +128,7 @@ It is not a wire format, and it adds nothing to a frame or a packet.
 
 ### What the committed trace covers
 
-The file is the 210-tick run: 1,469 records, 1,442,827 bytes. Its sha256 is in
+The file is the 210-tick run: 1,471 records, 1,445,239 bytes. Its sha256 is in
 `zone_relay.trace.sha256` beside it, and the script checks it. The frame bytes are from a seeded
 generator and differ for every slot, half and tick. They are not valid packets.
 
@@ -143,8 +142,8 @@ In the 210 ticks:
 - 35 sends, each followed by the six frames of every viewer; nine reads by one viewer between sends;
 - a flood: a second and third put for both halves of a slot in one interval, and one more put
   two ticks later, all refused and counted, with the first frames still handed out;
-- a put for slot 1 at tick 22, refused because the half took a frame at tick 18, and one at
-  tick 23, taken because 5 ticks have passed; the put of the send at tick 24 is then refused;
+- a put for slot 1 at tick 20, refused because the burst at tick 6 is not yet paid back, and one
+  at tick 21, taken; the put of the send at tick 24 is then refused;
 - puts to slots 4 and 255 and with halves 2 and 255, refused and not counted;
 - frames of 0, 1, 1,199, 1,201, 1,220 and 1,472 bytes;
 - a leave, a second leave of the same person, a leave of a stranger, a put to the empty slot;
@@ -224,10 +223,10 @@ from the true one.
 | Control | What is planted | The replay's first mismatch |
 | --- | --- | --- |
 | `flip` | the model flips one bit of byte 777 of a frame it hands out | record 5, `frame`, byte 777 |
-| `flood` | the model takes every put, so a flood replaces the first frame | record 91, `put`, want 1 got 0 |
-| `silent` | the model empties a slot one tick early | record 1352, `person_at`, want -1 got 30 |
+| `flood` | the model takes every put, so the third of a burst is taken | record 92, `put`, want 1 got 0 |
+| `silent` | the model empties a slot one tick early | record 1354, `person_at`, want -1 got 30 |
 | `order` | the model hands a viewer the other slots in the wrong order | record 47, `frame`, byte 0 |
-| `window` | the model opens a half 6 ticks after its last frame, not 5 | record 210, `put`, want 0 got 1 |
+| `window` | the model takes one frame in 6 ticks, not 5 | record 209, `put`, want 0 got 1 |
 
 To repeat it: write a trace with `--ticks=210 --control=<name>` and give it to
 `zone_relay_check`.
