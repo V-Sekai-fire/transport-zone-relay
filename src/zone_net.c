@@ -67,6 +67,8 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
     if (d > 0) { struct timespec r; r.tv_sec = (time_t)(d / 1000000000LL); r.tv_nsec = (long)(d % 1000000000LL); nanosleep(&r, 0); }
     int64_t t0 = now_ns(), first = -1;
     uint32_t fi0 = out->frames_in, do0 = out->datagrams_out, re0 = out->refused;
+    uint64_t tick_sid = otel_id(ot);
+    otel_trace(ot);
     for (int half = 0; half < 2; half++) {
       for (;;) {
         struct sockaddr_in from; socklen_t fl = sizeof from;
@@ -102,11 +104,12 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
     int64_t t1 = now_ns();
     {
-      static const char *const k[5] = { "people", "frames_in", "datagrams_out", "refused", "tick" };
-      int64_t v[5]; v[0] = people; v[1] = (int64_t)out->frames_in - fi0; v[2] = (int64_t)out->datagrams_out - do0;
-      v[3] = (int64_t)out->refused - re0; v[4] = counted;
-      otel_span(ot, "relay.tick", run_sid, t0, t1, 5, k, v);
-      if (ot->n >= OTEL_CAP / 2 && next - t1 > 3000000) otel_flush(ot);
+      otel_rec_t *r = otel_begin(ot, tick_sid, "relay.tick", 0, t0, t1); otel_kind(r, 2);
+      otel_num(r, "people", people); otel_num(r, "frames_in", (double)(out->frames_in - fi0));
+      otel_num(r, "datagrams_out", (double)(out->datagrams_out - do0)); otel_num(r, "refused", (double)(out->refused - re0));
+      otel_num(r, "round_us", (double)(t1 - t0) / 1000.0); otel_num(r, "late_us", (double)(t0 - next) / 1000.0);
+      if ((uint32_t)((t1 - start) / ZN_TICK_NS) > counted + 1) otel_error(r, "RoundOverrun", "the round ran past its slot");
+      if (ot->n >= OTEL_FLUSH_AT && next - t1 > 3000000) otel_flush(ot);
     }
     uint32_t wall = (uint32_t)((t1 - start) / ZN_TICK_NS);
     if (wall <= counted) wall = counted + 1;
@@ -124,15 +127,18 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
 #endif
   }
   out->ticks = counted; out->people = (uint32_t)people;
-  {
-    static const char *const k[4] = { "ticks", "people", "frames_in", "datagrams_out" };
-    int64_t v[4]; v[0] = counted; v[1] = people; v[2] = (int64_t)out->frames_in; v[3] = (int64_t)out->datagrams_out;
-    otel_span_as(ot, run_sid, "relay.run", 0, start, now_ns(), 4, k, v);
-    otel_close(ot);
-  }
   for (int z = 0; z < (people + ZR_SLOTS - 1) / ZR_SLOTS; z++) out->unread += zr_unread(&zones[z]);
   qsort(lat, rounds, sizeof(int64_t), cmp);
   out->p50_ns = lat[rounds / 2]; out->p95_ns = lat[(rounds * 95u) / 100]; out->p99_ns = lat[(rounds * 99u) / 100]; out->max_ns = lat[rounds - 1];
+  {
+    otel_rec_t *r; otel_trace(ot);
+    r = otel_begin(ot, run_sid, "relay.run", 0, start, now_ns()); otel_kind(r, 2);
+    otel_num(r, "ticks", counted); otel_num(r, "people", people); otel_num(r, "frames_in", out->frames_in); otel_num(r, "datagrams_out", out->datagrams_out);
+    otel_num(r, "refused", out->refused); otel_num(r, "overruns", out->overruns); otel_num(r, "p50_us", (double)out->p50_ns / 1000.0);
+    otel_num(r, "p95_us", (double)out->p95_ns / 1000.0); otel_num(r, "p99_us", (double)out->p99_ns / 1000.0); otel_num(r, "max_us", (double)out->max_ns / 1000.0);
+    if (out->overruns) otel_error(r, "RoundOverrun", "rounds ran past their slot during the run");
+    otel_close(ot);
+  }
   close(fd[0]); close(fd[1]);
   return 0;
 }
