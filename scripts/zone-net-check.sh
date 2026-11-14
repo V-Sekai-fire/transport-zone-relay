@@ -14,6 +14,7 @@ opaque() {
     -e '^[0-9]+: +ssize_t n = recvfrom\(fd\[half\], dgram, sizeof dgram, 0, \(struct sockaddr \*\)&from, &fl\);$' \
     -e '^[0-9]+: +if \(!zr_put\(z, slot, half, dgram, \(size_t\)n\)\) \{ out->refused\+\+; continue; \}$' \
     -e '^[0-9]+: +const uint8_t \*held = zr_frame\(z, v, \(slot > v \? slot - 1 : slot\) \* 2 \+ half, &len\);$' \
+    -e '^[0-9]+: +iv\[nm\]\.iov_base = \(void \*\)held; iv\[nm\]\.iov_len = len;$' \
     -e '^[0-9]+: +if \(sendto\(fd\[(half|1 - half)\], held, len, 0, \(const struct sockaddr \*\)&who\[seated\[zi\]\[v\]\]\.a, sizeof who\[0\]\.a\) >= 0\) out->datagrams_out\+\+;$'
 }
 
@@ -39,6 +40,24 @@ echo "RULES no heap, no Lean, a frame goes only to recvfrom, zr_put, zr_frame an
 rc=0; "$BIN/zone_net_check_half" > "$BIN/half.out" || rc=$?
 tail -1 "$BIN/half.out"
 if [ "$rc" != 1 ] || ! grep -q '^RESULT: FAIL a frame came from the socket of the other half$' "$BIN/half.out"; then echo "the frame from the wrong socket was not caught"; exit 1; fi
+
+# The sendmmsg send path (Linux only): one batch per received frame. Same checks, same planted wrong socket, and a planted short batch.
+if [ "$(uname -s)" = Linux ]; then
+  for arm in "" _half _short; do
+    case "$arm" in _half) def=-DZN_PLANT_HALF;; _short) def=-DZN_PLANT_BATCH_SHORT;; *) def=;; esac
+    $CC $STRICT -DZN_SENDMMSG $def -c "$SRC/zone_net.c" -o "$BIN/zone_net_mm$arm.o"
+    $CC -std=gnu99 -O2 -Wall -Wextra -Werror -pthread "$SRC/zone_net_check.c" "$BIN/zone_net_mm$arm.o" "$BIN/zone_relay.o" -o "$BIN/zone_net_check_mm$arm"
+  done
+  $CC $STRICT -DZN_SENDMMSG "$SRC/zone_serve.c" "$BIN/zone_net_mm.o" "$BIN/zone_relay.o" -o "$BIN/zone_serve_mmsg"
+  if nm "$BIN/zone_net_mm.o" | grep -E ' U _?(malloc|calloc|realloc|free|lean_)'; then echo "the sendmmsg socket layer has an allocator or Lean symbol"; exit 1; fi
+  "$BIN/zone_net_check_mm" > "$BIN/mm.out" || { cat "$BIN/mm.out"; echo "the sendmmsg path failed the socket check"; exit 1; }
+  echo "sendmmsg $(grep '^LEDGER' "$BIN/mm.out")"
+  rc=0; "$BIN/zone_net_check_mm_half" > "$BIN/mm_half.out" || rc=$?
+  if [ "$rc" != 1 ] || ! grep -q '^RESULT: FAIL a frame came from the socket of the other half$' "$BIN/mm_half.out"; then echo "the sendmmsg path: the frame from the wrong socket was not caught"; exit 1; fi
+  rc=0; "$BIN/zone_net_check_mm_short" > "$BIN/mm_short.out" || rc=$?
+  if [ "$rc" != 1 ] || ! grep -q '^RESULT: FAIL' "$BIN/mm_short.out"; then echo "the sendmmsg path: a short batch was not caught"; exit 1; fi
+  echo "sendmmsg planted: wrong socket and short batch caught ($(grep '^RESULT' "$BIN/mm_short.out"))"
+fi
 
 # sum <field> <program> [env]: runs the check RUNS times, prints each LEDGER line, leaves the sum of one field in $total.
 sum() {

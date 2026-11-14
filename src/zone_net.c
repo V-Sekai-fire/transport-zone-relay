@@ -1,4 +1,8 @@
+#ifdef ZN_SENDMMSG
+#define _GNU_SOURCE
+#else
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include "zone_net.h"
 #include "zone_relay.h"
 #include "otel_span.h"
@@ -86,6 +90,30 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
         int slot = who[p].slot;
         if (!zr_put(z, slot, half, dgram, (size_t)n)) { out->refused++; continue; }
         out->frames_in++;
+#ifdef ZN_SENDMMSG
+        {
+          struct mmsghdr mm[ZR_SLOTS]; struct iovec iv[ZR_SLOTS]; int nm = 0, sent;
+          memset(mm, 0, sizeof mm);
+          for (int v = 0; v < ZR_SLOTS; v++) {
+            size_t len;
+            if (v == slot || zr_person_at(z, v) < 0) continue;
+            const uint8_t *held = zr_frame(z, v, (slot > v ? slot - 1 : slot) * 2 + half, &len);
+            iv[nm].iov_base = (void *)held; iv[nm].iov_len = len;
+            mm[nm].msg_hdr.msg_name = &who[seated[zi][v]].a; mm[nm].msg_hdr.msg_namelen = sizeof who[0].a;
+            mm[nm].msg_hdr.msg_iov = &iv[nm]; mm[nm].msg_hdr.msg_iovlen = 1; nm++;
+          }
+#ifdef ZN_PLANT_BATCH_SHORT
+          if (nm > 1) nm--;
+#endif
+#ifdef ZN_PLANT_HALF
+          sent = nm ? sendmmsg(fd[1 - half], mm, (unsigned)nm, 0) : 0;
+#else
+          sent = nm ? sendmmsg(fd[half], mm, (unsigned)nm, 0) : 0;
+#endif
+          if (sent < 0) sent = 0;
+          out->datagrams_out += (uint32_t)sent; out->send_failed += (uint32_t)(nm - sent);
+        }
+#else
         for (int v = 0; v < ZR_SLOTS; v++) {
           size_t len;
           if (v == slot || zr_person_at(z, v) < 0) continue;
@@ -97,6 +125,7 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
 #endif
           else out->send_failed++;
         }
+#endif
       }
     }
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
