@@ -1,4 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
+#ifdef __linux__
+#define _GNU_SOURCE 1
+#endif
 #include "zone_net.h"
 #include "zone_relay.h"
 #include "otel_span.h"
@@ -9,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
 #define TABLE (ZN_MAX_PEOPLE * 2)
@@ -19,6 +23,15 @@ static int32_t table[TABLE];
 static int32_t seated[ZN_MAX_ZONES][ZR_SLOTS];
 static int64_t lat[1 << 16];
 static int people;
+#ifdef __linux__
+#define ZN_BATCH 32
+static uint8_t dgram[ZN_BATCH][ZR_FRAME_MAX + 1];
+static struct sockaddr_in froms[ZN_BATCH];
+static struct iovec rv[ZN_BATCH];
+static struct mmsghdr rm[ZN_BATCH];
+#else
+static uint8_t dgram[ZR_FRAME_MAX + 1];
+#endif
 static otel_t ot_store;
 static int64_t now_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec; }
 static int cmp(const void *x, const void *y) { int64_t a = *(const int64_t *)x, b = *(const int64_t *)y; return (a > b) - (a < b); }
@@ -47,11 +60,65 @@ static int bind_udp(const char *host, uint16_t port) {
   fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
   return fd;
 }
+/* One datagram taken: find the person, offer the frame to the state machine, and if it is taken send it on to the other
+ * seated members of the zone from the socket of the same half. The parameter keeps the name the source rule
+ * (scripts/zone-net-check.sh) looks for, so every use of a frame is seen. On Linux the sends of one frame go in one sendmmsg. */
+static void take(zn_report_t *out, const int *fd, int half, const uint8_t *dgram, ssize_t n, const struct sockaddr_in *from) {
+  if (n > ZR_FRAME_MAX) { out->refused++; return; }
+  int p = person_of(from);
+  if (p < 0) { out->strangers++; return; }
+  int zi = p / ZR_SLOTS;
+  zr_zone_t *z = &zones[zi];
+  if (who[p].slot < 0 || zr_person_at(z, who[p].slot) != p) {
+    who[p].slot = zr_join(z, p);
+    if (who[p].slot < 0) { out->refused++; return; }
+    seated[zi][who[p].slot] = p;
+  }
+  int slot = who[p].slot;
+  if (!zr_put(z, slot, half, dgram, (size_t)n)) { out->refused++; return; }
+  out->frames_in++;
+#ifdef ZN_PLANT_HALF
+  const int out_fd = fd[1 - half];
+#else
+  const int out_fd = fd[half];
+#endif
+#ifdef __linux__
+  struct iovec sv[ZR_SLOTS]; struct mmsghdr sm[ZR_SLOTS]; int ns = 0;
+  for (int v = 0; v < ZR_SLOTS; v++) {
+    size_t len;
+    if (v == slot || zr_person_at(z, v) < 0) continue;
+    const uint8_t *held = zr_frame(z, v, (slot > v ? slot - 1 : slot) * 2 + half, &len);
+    sv[ns].iov_base = (void *)held; sv[ns].iov_len = len;
+    memset(&sm[ns], 0, sizeof sm[ns]);
+    sm[ns].msg_hdr.msg_name = &who[seated[zi][v]].a; sm[ns].msg_hdr.msg_namelen = sizeof who[0].a;
+    sm[ns].msg_hdr.msg_iov = &sv[ns]; sm[ns].msg_hdr.msg_iovlen = 1;
+    ns++;
+  }
+  for (int off = 0; off < ns;) {
+    int r = sendmmsg(out_fd, sm + off, (unsigned)(ns - off), 0);
+    if (r > 0) { out->datagrams_out += (uint32_t)r; off += r; } else { out->send_failed++; off++; }
+  }
+#else
+  for (int v = 0; v < ZR_SLOTS; v++) {
+    size_t len;
+    if (v == slot || zr_person_at(z, v) < 0) continue;
+    const uint8_t *held = zr_frame(z, v, (slot > v ? slot - 1 : slot) * 2 + half, &len);
+    if (sendto(out_fd, held, len, 0, (const struct sockaddr *)&who[seated[zi][v]].a, sizeof who[0].a) >= 0) out->datagrams_out++;
+    else out->send_failed++;
+  }
+#endif
+}
 int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn_report_t *out) {
-  static uint8_t dgram[ZR_FRAME_MAX + 1];
   int fd[2];
   if (ticks == 0 || ticks > (1u << 16) || port == 0 || port == 65535) return -EINVAL;
   memset(out, 0, sizeof *out); memset(table, 0, sizeof table); people = 0;
+#ifdef __linux__
+  for (int i = 0; i < ZN_BATCH; i++) {
+    rv[i].iov_base = dgram[i]; rv[i].iov_len = sizeof dgram[i];
+    memset(&rm[i], 0, sizeof rm[i]);
+    rm[i].msg_hdr.msg_name = &froms[i]; rm[i].msg_hdr.msg_iov = &rv[i]; rm[i].msg_hdr.msg_iovlen = 1;
+  }
+#endif
   for (int z = 0; z < ZN_MAX_ZONES; z++) { zr_reset(&zones[z]); for (int s = 0; s < ZR_SLOTS; s++) seated[z][s] = -1; }
   fd[0] = bind_udp(host, port);
   fd[1] = bind_udp(host, (uint16_t)(port + 1));
@@ -70,36 +137,23 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
     uint64_t tick_sid = otel_id(ot);
     otel_trace(ot);
     for (int half = 0; half < 2; half++) {
+#ifdef __linux__
+      for (;;) {
+        for (int i = 0; i < ZN_BATCH; i++) rm[i].msg_hdr.msg_namelen = sizeof froms[0];
+        int got = recvmmsg(fd[half], rm, ZN_BATCH, MSG_DONTWAIT, 0);
+        if (got <= 0) break;
+        if (first < 0) first = now_ns();
+        for (int i = 0; i < got; i++) take(out, fd, half, dgram[i], (ssize_t)rm[i].msg_len, &froms[i]);
+      }
+#else
       for (;;) {
         struct sockaddr_in from; socklen_t fl = sizeof from;
         ssize_t n = recvfrom(fd[half], dgram, sizeof dgram, 0, (struct sockaddr *)&from, &fl);
         if (n < 0) break;
         if (first < 0) first = now_ns();
-        if (n > ZR_FRAME_MAX) { out->refused++; continue; }
-        int p = person_of(&from);
-        if (p < 0) { out->strangers++; continue; }
-        int zi = p / ZR_SLOTS;
-        zr_zone_t *z = &zones[zi];
-        if (who[p].slot < 0 || zr_person_at(z, who[p].slot) != p) {
-          who[p].slot = zr_join(z, p);
-          if (who[p].slot < 0) { out->refused++; continue; }
-          seated[zi][who[p].slot] = p;
-        }
-        int slot = who[p].slot;
-        if (!zr_put(z, slot, half, dgram, (size_t)n)) { out->refused++; continue; }
-        out->frames_in++;
-        for (int v = 0; v < ZR_SLOTS; v++) {
-          size_t len;
-          if (v == slot || zr_person_at(z, v) < 0) continue;
-          const uint8_t *held = zr_frame(z, v, (slot > v ? slot - 1 : slot) * 2 + half, &len);
-#ifdef ZN_PLANT_HALF
-          if (sendto(fd[1 - half], held, len, 0, (const struct sockaddr *)&who[seated[zi][v]].a, sizeof who[0].a) >= 0) out->datagrams_out++;
-#else
-          if (sendto(fd[half], held, len, 0, (const struct sockaddr *)&who[seated[zi][v]].a, sizeof who[0].a) >= 0) out->datagrams_out++;
-#endif
-          else out->send_failed++;
-        }
+        take(out, fd, half, dgram, n, &from);
       }
+#endif
     }
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
     int64_t t1 = now_ns();

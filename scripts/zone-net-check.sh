@@ -10,11 +10,16 @@ RUNS="${RUNS:-3}"
 
 opaque() {
   ! grep -n -E 'dgram|held' "$1" | grep -v -E \
-    -e '^[0-9]+: +static uint8_t dgram\[ZR_FRAME_MAX \+ 1\];$' \
-    -e '^[0-9]+: +ssize_t n = recvfrom\(fd\[half\], dgram, sizeof dgram, 0, \(struct sockaddr \*\)&from, &fl\);$' \
-    -e '^[0-9]+: +if \(!zr_put\(z, slot, half, dgram, \(size_t\)n\)\) \{ out->refused\+\+; continue; \}$' \
+    -e '^[0-9]+:static uint8_t dgram\[(ZN_BATCH\]\[)?ZR_FRAME_MAX \+ 1\];$' \
+    -e '^[0-9]+:static void take\(zn_report_t \*out, const int \*fd, int half, const uint8_t \*dgram, ssize_t n, const struct sockaddr_in \*from\) \{$' \
+    -e '^[0-9]+: +rv\[i\]\.iov_base = dgram\[i\]; rv\[i\]\.iov_len = sizeof dgram\[i\];$' \
+    -e '^[0-9]+: +if \(!zr_put\(z, slot, half, dgram, \(size_t\)n\)\) \{ out->refused\+\+; return; \}$' \
     -e '^[0-9]+: +const uint8_t \*held = zr_frame\(z, v, \(slot > v \? slot - 1 : slot\) \* 2 \+ half, &len\);$' \
-    -e '^[0-9]+: +if \(sendto\(fd\[(half|1 - half)\], held, len, 0, \(const struct sockaddr \*\)&who\[seated\[zi\]\[v\]\]\.a, sizeof who\[0\]\.a\) >= 0\) out->datagrams_out\+\+;$'
+    -e '^[0-9]+: +sv\[ns\]\.iov_base = \(void \*\)held; sv\[ns\]\.iov_len = len;$' \
+    -e '^[0-9]+: +if \(sendto\(out_fd, held, len, 0, \(const struct sockaddr \*\)&who\[seated\[zi\]\[v\]\]\.a, sizeof who\[0\]\.a\) >= 0\) out->datagrams_out\+\+;$' \
+    -e '^[0-9]+: +for \(int i = 0; i < got; i\+\+\) take\(out, fd, half, dgram\[i\], \(ssize_t\)rm\[i\]\.msg_len, &froms\[i\]\);$' \
+    -e '^[0-9]+: +ssize_t n = recvfrom\(fd\[half\], dgram, sizeof dgram, 0, \(struct sockaddr \*\)&from, &fl\);$' \
+    -e '^[0-9]+: +take\(out, fd, half, dgram, n, &from\);$'
 }
 
 $CC $STRICT -c "$SRC/zone_relay.c" -o "$BIN/zone_relay.o"
@@ -31,7 +36,7 @@ $CC $STRICT "$SRC/zone_load.c" -o "$BIN/zone_load"
 
 if nm "$BIN/zone_net.o" | grep -E ' U _?(malloc|calloc|realloc|free|lean_)'; then echo "the socket layer has an allocator or Lean symbol"; exit 1; fi
 opaque "$SRC/zone_net.c" || { echo "the socket layer touches a frame outside recvfrom, zr_put, zr_frame and sendto"; exit 1; }
-sed 's|^        out->frames_in++;$|        out->frames_in += 1 + (dgram[0] \& 0);|' "$SRC/zone_net.c" > "$BIN/zone_net_reads.c"
+sed 's|^  out->frames_in++;$|  out->frames_in += 1 + (dgram[0] \& 0);|' "$SRC/zone_net.c" > "$BIN/zone_net_reads.c"
 if cmp -s "$SRC/zone_net.c" "$BIN/zone_net_reads.c"; then echo "the planted read was not planted"; exit 1; fi
 if opaque "$BIN/zone_net_reads.c" > /dev/null; then echo "the source rule did not catch a planted read"; exit 1; fi
 echo "RULES no heap, no Lean, a frame goes only to recvfrom, zr_put, zr_frame and sendto, planted read caught"

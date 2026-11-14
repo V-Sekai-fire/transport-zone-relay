@@ -45,8 +45,10 @@ machine's own rules; it never sends a frame twice.
 
 `scripts/zone-net-check.sh` holds the socket layer to the rules the state machine has.
 It compiles under `-std=c99 -Wall -Wextra -Werror -pedantic`. Its object has no allocator and no
-Lean symbol. And a frame is touched in five lines only: the buffer's declaration, `recvfrom`,
-`zr_put`, `zr_frame` and `sendto`. A copy of the source with one read of a frame byte planted
+Lean symbol. And a frame is touched in a short list of lines only: the buffer's declaration, where a receive
+batch is pointed at it (or `recvfrom`, off Linux), `zr_put`, `zr_frame` and where a send batch is pointed at
+the held frame (or `sendto`). The work for one datagram is in `take`, whose frame parameter keeps the name the
+rule looks for. A copy of the source with one read of a frame byte planted
 must fail that rule before the real source is accepted.
 
 ## The check
@@ -123,14 +125,31 @@ product the plan asks for is people times six.
 
 On the development Mac, three runs of the socket check together: 0 honest frames refused of 960,
 a median tick of about 10 microseconds, and 6 ms a tick with the planted handler. The first run
-of this layer, under the old rule, refused 7 of 320. The sweep has not been run on a machine
-whose times mean anything, and no number of people is claimed.
+of this layer, under the old rule, refused 7 of 320. The Mac's loopback is not a place to compare times.
+
+On Linux (a Fly performance-2x machine, kernel 6.12, two vCPUs shared with the load generator), the
+syscalls of the old layer at 256 people were `sendto` 72,928 calls and 81% of the time in system calls,
+`recvfrom` 25,047 calls and 18%, and nothing else over 1%. A frame in is three sends out, so the relay now
+reads with `recvmmsg` (up to 32 datagrams) and sends the three of a frame with one `sendmmsg`. Two rounds
+of the sweep, the old layer and the new one interleaved on one machine:
+
+| People | Median tick, old | Median tick, new | 99th, old | 99th, new | ns a datagram out, old | ns a datagram out, new |
+| --- | --- | --- | --- | --- | --- | --- |
+| 16 | 129, 129 us | 108, 112 us | 201, 202 us | 178, 209 us | 6035, 6053 | 5165, 5469 |
+| 256 | 1,968, 1,995 us | 1,625, 1,655 us | 2.69, 2.79 ms | 2.43, 2.33 ms | 5497, 5605 | 4626, 4659 |
+
+Both sent the same 10,080 and 160,864 datagrams and both delivered 98.1% and 97.9%, so these rows
+compare like with like. At 1,024 people the loader and the relay compete for two vCPUs and neither layer
+keeps up: the old layer delivered 55.5% and 49.8% of what was due, the new one 83.6% and 83.7%, with
+the 99th percentile of the tick at 10.1 and 11.0 ms against 7.8 ms. At 4,096 people the runs scatter
+too much to say anything (datagrams out from 506,162 to 997,686); no number of people is claimed.
 
 ## What the check does not show
 
 - Anything about the home server's member table, keys or `sees`; a person here is an address.
 - A real network. Everything is loopback on one machine, with the loader beside the relay.
-- A send backend other than one `sendto` a datagram. The entity server measured batched sends
-  separately, and the same choice is open here.
+- A send that batches across frames. One `sendmmsg` carries the three sends of one frame only: the state
+  machine keeps the latest frame of a half and a second frame of that half on the same tick would replace
+  the first before it was sent, so a send queue across frames needs a flush on that conflict and a test for it.
 - Absolute time. On the development Mac one loopback datagram costs about 0.4 ms in either
   program, so times here are good for comparing one run with the next and for nothing else.
