@@ -1,0 +1,3 @@
+%{
+  "mojoler": {:git, "https://github.com/thanos/mojoler.git", "76ec452d26d171f5a03f72d05d854f2819c29383", [ref: "76ec452d26d171f5a03f72d05d854f2819c29383"]},
+}

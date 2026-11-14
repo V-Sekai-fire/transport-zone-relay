@@ -18,6 +18,22 @@ The first two are gates with planted controls. The sweep measures and does not g
 
 This code came out of `transport-feed-entity-servers`, which keeps the entity server.
 
+## The relay in Mojo and Elixir
+
+The same relay, with Mojo running the compute and Elixir running the server. It sits beside the C and does not replace it.
+
+- `native/zone_relay.mojo`: the state machine, ported line for line from `src/zone_relay.c`.
+- `native/zone_nif.mojo`: one zone as a BEAM resource, through [mojoler](https://github.com/thanos/mojoler).
+- `lib/zone_relay/server.ex`: two UDP sockets (first frames on `port`, second on `port + 1`) and a 64 Hz tick.
+- `native/zone_relay_check.mojo`: replays `src/testdata/zone_relay.trace` in Mojo alone.
+
+It needs Mojo 1.1.0, OTP 28.3.1 and Elixir 1.20.2, the versions mojoler pins.
+
+ mix test
+ mojo build -I native native/zone_relay_check.mojo -o zrc && ./zrc src/testdata/zone_relay.trace
+
+`mix test` replays the same trace through the NIF, with one flipped bit that must fail, then runs loopback UDP tests. Not ported: the load generator, the spans and the sweep.
+
 ## The other parts
 
 Each part of the presence slice is a repository of its own in `V-Sekai-fire`, and they are checked

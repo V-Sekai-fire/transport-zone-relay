@@ -28,3 +28,22 @@ jobs:
           cmake -S test -B "$RUNNER_TEMP/otel" -G Ninja
           cmake --build "$RUNNER_TEMP/otel"
           ctest --test-dir "$RUNNER_TEMP/otel" --output-on-failure
+  mojo-relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 28.3.1
+          elixir-version: 1.20.2
+      - name: The Mojo relay replays the trace through the NIF, and the Elixir server relays on loopback
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mojo" && "$RUNNER_TEMP/mojo/bin/pip" install mojo==1.1.0
+          export PATH="$RUNNER_TEMP/mojo/bin:$PATH"
+          mix deps.get && mix test
+      - name: The pure Mojo replay of the trace
+        run: |
+          export PATH="$RUNNER_TEMP/mojo/bin:$PATH"
+          mojo build -I native native/zone_relay_check.mojo -o "$RUNNER_TEMP/zrc"
+          "$RUNNER_TEMP/zrc" src/testdata/zone_relay.trace
