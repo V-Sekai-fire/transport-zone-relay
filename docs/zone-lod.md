@@ -29,18 +29,18 @@ On a Fly performance-2x machine, sender and receiver on separate cores, three ru
 
 | Frame size | Cost of a send, one datagram a frame |
 | --- | --- |
-| 1,200 bytes | 3,456 ns |
-| 300 bytes | 3,462 ns |
-| 75 bytes | 3,409 ns |
+| 1200 bytes | 3.456e-6 s |
+| 300 bytes | 3.462e-6 s |
+| 75 bytes | 3.409e-6 s |
 
 Many frames to one viewer in one call, 75-byte frames:
 
 | Frames per call | Packed in one datagram | One `sendmsg` with `UDP_SEGMENT` |
 | --- | --- | --- |
-| 4 | 905 ns a frame | 1,585 ns a frame |
-| 8 | 466 ns a frame | 1,045 ns a frame |
-| 16 | 240 ns a frame | 778 ns a frame |
-| 32 | 118 ns a frame | 626 ns a frame |
+| 4 | 0.905e-6 s a frame | 1.585e-6 s a frame |
+| 8 | 0.466e-6 s a frame | 1.045e-6 s a frame |
+| 16 | 0.24e-6 s a frame | 0.778e-6 s a frame |
+| 32 | 0.118e-6 s a frame | 0.626e-6 s a frame |
 
 Packing needs frame lengths in the relay and an unpacking client. `UDP_SEGMENT` leaves the client unchanged but needs equal sizes to one destination.
 
