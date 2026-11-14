@@ -13,7 +13,7 @@ typedef struct {
   uint64_t heard[ZR_SLOTS];
   uint64_t now;
   uint64_t unread;
-  uint64_t open[ZR_SLOTS * 2];
+  uint64_t due[ZR_SLOTS * 2];
   uint16_t len[ZR_SLOTS * 2];
   uint8_t store[ZR_SLOTS * 2][ZR_FRAME_MAX];
 } zr_zone_t;

@@ -24,6 +24,8 @@ $CC -std=gnu99 -O2 -Wall -Wextra -Werror -pthread "$SRC/zone_net_check.c" "$BIN/
 $CC -std=gnu99 -O2 -Wall -Wextra -Werror -pthread "$SRC/zone_net_check.c" "$BIN/zone_net_half.o" "$BIN/zone_relay.o" -o "$BIN/zone_net_check_half"
 $CC $STRICT "$SRC/zone_clock_check.c" "$SRC/zone_relay.c" -o "$BIN/zone_clock_check"
 $CC $STRICT -DZR_PLANT_PHASE "$SRC/zone_clock_check.c" "$SRC/zone_relay.c" -o "$BIN/zone_clock_check_phase"
+$CC $STRICT -DZN_PLANT_NO_CATCH_UP -c "$SRC/zone_net.c" -o "$BIN/zone_net_late.o"
+$CC -std=gnu99 -O2 -Wall -Wextra -Werror -pthread "$SRC/zone_net_check.c" "$BIN/zone_net_late.o" "$BIN/zone_relay.o" -o "$BIN/zone_net_check_late"
 $CC $STRICT "$SRC/zone_serve.c" "$BIN/zone_net.o" "$BIN/zone_relay.o" -o "$BIN/zone_serve"
 $CC $STRICT "$SRC/zone_load.c" -o "$BIN/zone_load"
 
@@ -52,6 +54,11 @@ sum() {
 sum honest_refused clean "$BIN/zone_net_check"; clean_refused=$total
 sum p50_ns clean "$BIN/zone_net_check"; clean_p50=$total
 sum p50_ns slow env ZONE_SLOW_NS=6000000 "$BIN/zone_net_check"; slow_p50=$total
+rc=0; ZONE_SLOW_NS=25000000 "$BIN/zone_net_check_late" > "$BIN/late.out" || rc=$?
+echo "no-catch-up $(grep '^LEDGER' "$BIN/late.out")"
+if [ "$rc" != 1 ] || ! grep -q -E '^RESULT: FAIL a (relay that fell behind refused honest frames|viewer got under 80% of the frames)$' "$BIN/late.out"; then echo "a relay that does not catch its clock up was not caught"; exit 1; fi
+ZONE_SLOW_NS=25000000 "$BIN/zone_net_check" > "$BIN/behind.out" || { cat "$BIN/behind.out"; echo "the relay refused honest frames when it fell behind"; exit 1; }
+echo "behind $(grep '^LEDGER' "$BIN/behind.out")"
 echo "sockets LEDGER runs=$RUNS honest_refused=$clean_refused p50_ns_sum=$clean_p50 slow_p50_ns_sum=$slow_p50"
 
 rc=0; "$BIN/zone_clock_check_phase" > "$BIN/phase.out" || rc=$?
