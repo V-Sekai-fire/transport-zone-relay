@@ -32,7 +32,7 @@ It needs Mojo 1.1.0, OTP 28.3.1 and Elixir 1.20.2, the versions mojoler pins.
  mix test
  mojo build -I native native/zone_relay_check.mojo -o zrc && ./zrc src/testdata/zone_relay.trace
 
-`scripts/witness-props.sh` property-tests the relay with `thirdparty/witness-mojo`, a Mojo port of [contract-witness-cpp](https://github.com/V-Sekai-fire/contract-witness-cpp). It replays random join, leave, put and tick sequences and checks the relay's invariants, then builds five broken copies of the relay and requires each to fail.
+`scripts/witness-props.sh` property-tests the relay with `thirdparty/witness-mojo` (a git subtree of [contract-witness-mojo](https://github.com/V-Sekai-fire/contract-witness-mojo)), a Mojo port of [contract-witness-cpp](https://github.com/V-Sekai-fire/contract-witness-cpp). It replays random join, leave, put and tick sequences and checks the relay's invariants, then builds five broken copies of the relay and requires each to fail.
 
 `mix test` replays the same trace through the NIF, with one flipped bit that must fail, then runs loopback UDP tests. Not ported: the load generator, the spans and the sweep.
 
