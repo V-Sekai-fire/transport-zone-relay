@@ -18,6 +18,8 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/zr" && BIN="$RUNNER_TEMP/zr" CC=gcc bash scripts/zone-relay-check.sh
       - name: The relay on sockets and under drifting clocks, after its planted defects show
         run: mkdir -p "$RUNNER_TEMP/zn" && BIN="$RUNNER_TEMP/zn" CC=gcc bash scripts/zone-net-check.sh
+      - name: The caps on what a zone saves, as constants, with each planted defect failing the check
+        run: mkdir -p "$RUNNER_TEMP/zc" && BIN="$RUNNER_TEMP/zc" CC=gcc bash scripts/zone-caps-check.sh
   otel-span:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

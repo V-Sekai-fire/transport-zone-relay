@@ -9,10 +9,11 @@ The zone relay in C: a state machine equal to the router model on a recorded tra
 - `src/zone_clock_check.c`: clients whose clocks are not the relay's.
 - `src/zone_serve.c` and `src/zone_load.c`: the relay as a process and the load generator that sends as clients would.
 - `docs/zone-relay.md` and `docs/zone-net.md`; `docs/zone-lod.md` holds the parked placeholders for levels of detail.
-- `docs/zone-caps.md`: the caps on what a zone saves, set by review and not built.
+- `src/zone_caps.h` and `src/zone_caps.c`: the caps on what a zone saves, as constants and a checker, with `docs/zone-caps.md`. Nothing calls them yet.
 
     bash scripts/zone-relay-check.sh
     bash scripts/zone-net-check.sh
+    bash scripts/zone-caps-check.sh
     BIN=<the directory zone-net-check.sh built into> bash scripts/zone-sweep.sh
 
 The first two are gates with planted controls. The sweep measures and does not gate.

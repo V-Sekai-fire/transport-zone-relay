@@ -1,6 +1,6 @@
 # Caps on what a zone saves
 
-Status: set on 2026-10-09 by review and not built. Nothing in this repository enforces them. They apply to the code that saves a zone's journal, which is the store in `thirdparty/fdb-sqlite`, and the relay does not call it yet.
+Status: set on 2026-10-09 by review. `src/zone_caps.h` holds every number as a constant and `src/zone_caps.c` enforces them, but nothing calls it yet: the relay saves nothing, and the store in `thirdparty/fdb-sqlite` does not call it either. `bash scripts/zone-caps-check.sh` checks it.
 
 ## Why caps
 
@@ -26,15 +26,24 @@ Two outside norms set them.
 
 In cold storage the worst case is 33,554,432 bytes a day for 30 days, about 1,006,632,960 bytes for one zone database. The journal image today is far below 1,048,576 bytes, so the daily budget allows hundreds of saves.
 
+## The constants
+
+Every number is a `#define` in `src/zone_caps.h`, and `src/zone_caps.c` holds no number but 0 and 1. The gate fails if it does, and a planted literal shows that the rule can fail. `ZC_DB_BYTES`, `ZC_DAY_BYTES` and `ZC_COLD_BYTES` are products of the others, and the check compares them with the numbers written in the table above.
+
+`zc_admit` takes an owner, a kind (data, object, world or pose), a byte count and the time in seconds. It returns `ZC_OK` or the reason it refused, and a refusal leaves the state as it was. A save rewrites the whole image, so the daily count adds the size of the image after the save, not the bytes of the change.
+
+World data (a prop spawned by the zone) is charged to no player, only to the database and the day. That matters: four players can save at most 4 times 200,000 bytes, which is 800,000 bytes and less than the 1,048,576 bytes of the database, so the database cap binds only on world data.
+
 ## Controls that must fail
 
-Each gate must be shown to fail on a planted defect before it counts as green.
+`scripts/zone-caps-check.sh` runs the check and then seven planted defects, and each must fail it.
 
-1. Write 257 pages. It must fail with `SQLITE_FULL`.
-2. Write a player's 200,000 bytes and one record more. It must be refused, and the refusal names the owner.
-3. Spend 33,554,432 bytes in one day, then write once more. It must be refused, and the refusal names the daily budget.
-4. Journal a pose on every tick. The cap must refuse it before the cluster sees it.
-5. Refuse a write, then restart. The world must come back at the last good state.
+1. A 257th page admitted (`extra_page`). The check writes 257 pages and expects a refusal.
+2. A player's 200,000 bytes and one byte more (`extra_byte`), for data and for objects.
+3. No cap on the day (`no_day_cap`) and a day that never ends (`day_never_ends`). The check spends 33,554,432 bytes, expects the next write refused, and expects it admitted when 86,400 s have passed.
+4. A pose saved (`pose_saved`).
+5. A refusal that charges the day (`refusal_charges`). The check compares the state byte for byte before and after each refusal, so the world comes back at the last good state.
+6. A seat that does not exist admitted (`any_seat`).
 
 ## What the review also changed
 
@@ -46,4 +55,4 @@ Each gate must be shown to fail on a planted defect before it counts as green.
 ## Not decided here
 
 - Whether the relay persists anything. Today it holds the latest frame of each half in memory and saves nothing.
-- Who owns the binding that counts bytes. It is not in this repository.
+- Who calls `zc_admit`. The binding between the zone and the store is not in this repository, and `PRAGMA max_page_count` is set there to `ZC_MAX_PAGES`.
