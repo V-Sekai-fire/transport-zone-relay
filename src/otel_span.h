@@ -1,7 +1,8 @@
-/* Spans as OTLP/JSON, written from C. A header-only port of the span half of the engine's
+/* Spans as OTLP protobuf, written from C. A header-only port of the span half of the engine's
  * open_telemetry module (see docs/otel.md): spans are recorded after the fact into a fixed ring, so a
- * hot loop pays for one struct copy, and otel_flush writes one resourceSpans body, one line, to a
- * file a sidecar posts. Nothing here allocates, opens a socket or blocks except otel_flush. */
+ * hot loop pays for one struct copy, and otel_flush appends the ring as one length-prefixed ScopeSpans
+ * record. There is one format and one path; a caller that wants no output opens /dev/null. Nothing here
+ * allocates or opens a socket, and only otel_flush writes. */
 #ifndef OTEL_SPAN_H
 #define OTEL_SPAN_H
 #include <stddef.h>
@@ -23,12 +24,10 @@ typedef struct {
 } otel_rec_t;
 
 typedef struct {
-  char service[64], extra[512];
   uint64_t tid_hi, tid_lo, rng;
   int64_t wall_off; /* wall minus monotonic, in nanoseconds, fixed at open */
   uint32_t n, dropped;
   FILE *out;
-  int pb; /* nonzero: otel_flush writes protobuf records, see otel_flush_pb */
   otel_rec_t r[OTEL_CAP];
 } otel_t;
 
@@ -39,23 +38,14 @@ static inline uint64_t otel_next(otel_t *o) { /* xorshift64, logical shifts */
 
 static inline uint64_t otel_id(otel_t *o) { uint64_t v = otel_next(o); return v ? v : 1; }
 
-static inline void otel_clean(char *s) { /* the strings go into JSON unescaped, so keep them plain */
-#ifdef OTEL_PLANT_NOCLEAN
-  (void)s; return;
-#endif
-  for (; *s; s++) if (*s == '"' || *s == '\\' || (unsigned char)*s < 32) *s = '_';
-}
-
-/* Opens path for appending; extra is the standard OTEL_RESOURCE_ATTRIBUTES form, key=value,key=value. */
-static inline int otel_open(otel_t *o, const char *service, const char *extra, const char *path, uint64_t seed) {
+/* Opens path for appending. */
+static inline int otel_open(otel_t *o, const char *path, uint64_t seed) {
   struct timespec w, m;
   memset(o, 0, offsetof(otel_t, r));
   clock_gettime(CLOCK_REALTIME, &w); clock_gettime(CLOCK_MONOTONIC, &m);
   o->wall_off = ((int64_t)w.tv_sec - (int64_t)m.tv_sec) * 1000000000LL + ((int64_t)w.tv_nsec - (int64_t)m.tv_nsec);
   o->rng = seed ? seed : (uint64_t)w.tv_nsec * 2654435761u + 88172645463325252ull;
   o->tid_hi = otel_id(o); o->tid_lo = otel_id(o);
-  strncpy(o->service, service, sizeof o->service - 1); otel_clean(o->service);
-  if (extra) { strncpy(o->extra, extra, sizeof o->extra - 1); otel_clean(o->extra); }
   o->out = fopen(path, "a");
   return o->out ? 0 : -1;
 }
@@ -76,37 +66,6 @@ static inline uint64_t otel_span_as(otel_t *o, uint64_t sid, const char *name, u
 static inline uint64_t otel_span(otel_t *o, const char *name, uint64_t parent, int64_t mono0, int64_t mono1, uint32_t nattr,
                                  const char *const *keys, const int64_t *vals) {
   return otel_span_as(o, otel_id(o), name, parent, mono0, mono1, nattr, keys, vals);
-}
-
-static inline void otel_flush_pb(otel_t *o);
-
-static inline void otel_flush(otel_t *o) {
-  if (!o->out || o->n == 0) return;
-  if (o->pb) { otel_flush_pb(o); return; }
-  FILE *f = o->out;
-  fprintf(f, "{\"resourceSpans\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"%s\"}}", o->service);
-  { char buf[512]; char *p, *save; strcpy(buf, o->extra);
-    for (p = strtok_r(buf, ",", &save); p; p = strtok_r(0, ",", &save)) {
-      char *eq = strchr(p, '=');
-      if (!eq) continue;
-      *eq = 0;
-      fprintf(f, ",{\"key\":\"%s\",\"value\":{\"stringValue\":\"%s\"}}", p, eq + 1);
-    } }
-  fprintf(f, "]},\"scopeSpans\":[{\"scope\":{\"name\":\"entity-server\"},\"spans\":[");
-  for (uint32_t i = 0; i < o->n; i++) {
-    const otel_rec_t *r = &o->r[i];
-    fprintf(f, "%s{\"traceId\":\"%016llx%016llx\",\"spanId\":\"%016llx\",", i ? "," : "", (unsigned long long)o->tid_hi,
-            (unsigned long long)o->tid_lo, (unsigned long long)r->sid);
-    if (r->psid) fprintf(f, "\"parentSpanId\":\"%016llx\",", (unsigned long long)r->psid);
-    fprintf(f, "\"name\":\"%s\",\"kind\":1,\"startTimeUnixNano\":\"%llu\",\"endTimeUnixNano\":\"%llu\",\"attributes\":[", r->name,
-            (unsigned long long)r->t0, (unsigned long long)r->t1);
-    for (uint32_t k = 0; k < r->nattr; k++)
-      fprintf(f, "%s{\"key\":\"%s\",\"value\":{\"intValue\":\"%lld\"}}", k ? "," : "", r->key[k], (long long)r->val[k]);
-    fprintf(f, "]}");
-  }
-  fprintf(f, "]}]}]}\n");
-  fflush(f);
-  o->n = 0;
 }
 
 /* Protobuf (OTLP/HTTP's own encoding). A record is a 4-byte little-endian length and one ScopeSpans
@@ -132,7 +91,9 @@ static inline uint32_t otel_pb_span(const otel_t *o, const otel_rec_t *r, uint8_
   otel_pb_be(id, o->tid_hi); otel_pb_be(id + 8, o->tid_lo);
   n += otel_pb_bytes(b ? b + n : 0, 0x0A, id, 16);
   otel_pb_be(id, r->sid); n += otel_pb_bytes(b ? b + n : 0, 0x12, id, 8);
+#ifndef OTEL_PLANT_PBPARENT
   if (r->psid) { otel_pb_be(id, r->psid); n += otel_pb_bytes(b ? b + n : 0, 0x22, id, 8); }
+#endif
   n += otel_pb_bytes(b ? b + n : 0, 0x2A, r->name, (uint32_t)strlen(r->name));
   if (b) b[n] = 0x30;
   n++; n += otel_pb_varint(b ? b + n : 0, 1);
@@ -153,7 +114,8 @@ static inline uint32_t otel_pb_span(const otel_t *o, const otel_rec_t *r, uint8_
   return n;
 }
 
-static inline void otel_flush_pb(otel_t *o) {
+static inline void otel_flush(otel_t *o) {
+  if (!o->out || o->n == 0) return;
   static const char scope[] = "entity-server";
   uint8_t head[32], tmp[512], sc[32];
   uint32_t sclen = otel_pb_bytes(sc, 0x0A, scope, (uint32_t)strlen(scope)); /* InstrumentationScope{name} */

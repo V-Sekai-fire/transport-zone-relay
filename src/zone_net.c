@@ -57,10 +57,10 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
   fd[1] = bind_udp(host, (uint16_t)(port + 1));
   if (fd[0] < 0 || fd[1] < 0) { if (fd[0] >= 0) close(fd[0]); if (fd[1] >= 0) close(fd[1]); return -EADDRINUSE; }
   int64_t start = now_ns(), next = start + ZN_TICK_NS;
-  otel_t *ot = 0; uint64_t run_sid = 0;
-  { const char *op = getenv("ZONE_OTEL");
-    if (op && *op && otel_open(&ot_store, "zone-relay", getenv("OTEL_RESOURCE_ATTRIBUTES"), op, 0) == 0) {
-      const char *of = getenv("ZONE_OTEL_FORMAT"); ot = &ot_store; ot->pb = of && strcmp(of, "pb") == 0; run_sid = otel_id(ot); } }
+  /* Spans are recorded and flushed every run; the environment only says where they go, and /dev/null is a place. */
+  otel_t *ot = &ot_store;
+  { const char *op = getenv("ZONE_OTEL"); if (otel_open(ot, op && *op ? op : "/dev/null", 0) < 0) { int e = errno; close(fd[0]); close(fd[1]); return -e; } }
+  uint64_t run_sid = otel_id(ot);
   uint32_t counted = 0, rounds = 0;
   for (uint32_t t = 0; counted < ticks; t++, rounds++) {
     int64_t d = next - now_ns();
@@ -101,7 +101,7 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
     }
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
     int64_t t1 = now_ns();
-    if (ot) {
+    {
       static const char *const k[5] = { "people", "frames_in", "datagrams_out", "refused", "tick" };
       int64_t v[5]; v[0] = people; v[1] = (int64_t)out->frames_in - fi0; v[2] = (int64_t)out->datagrams_out - do0;
       v[3] = (int64_t)out->refused - re0; v[4] = counted;
@@ -124,7 +124,7 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
 #endif
   }
   out->ticks = counted; out->people = (uint32_t)people;
-  if (ot) {
+  {
     static const char *const k[4] = { "ticks", "people", "frames_in", "datagrams_out" };
     int64_t v[4]; v[0] = counted; v[1] = people; v[2] = (int64_t)out->frames_in; v[3] = (int64_t)out->datagrams_out;
     otel_span_as(ot, run_sid, "relay.run", 0, start, now_ns(), 4, k, v);

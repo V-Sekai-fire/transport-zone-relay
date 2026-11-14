@@ -4,12 +4,12 @@
 (`transports/csrc/otel_span.h`); its own description and the reasons for it are in that repository's
 `docs/otel.md`. A copy, not a link, so this repository builds alone; change the original first and copy it.
 
-    ZONE_OTEL=<file> ZONE_OTEL_FORMAT=pb OTEL_RESOURCE_ATTRIBUTES="k=v" zone_serve ...
-
-The relay then records a `relay.run` span with a `relay.tick` child for every round of its loop. The
-attributes of a tick are `people`, `frames_in`, `datagrams_out`, `refused` and `tick`. Spans are flushed in
-the idle part of a round, only when the ring is half full and more than 3 ms remain. Without `ZONE_OTEL` the
-relay does nothing new. The relay reads no frame to do this: it counts, as it did.
+The relay records a `relay.run` span with a `relay.tick` child for every round of its loop, in every run, and appends
+them to a file as protobuf records. The attributes of a tick are `people`, `frames_in`, `datagrams_out`, `refused`
+and `tick`. There is no switch: `ZONE_OTEL=<file>` names the file and defaults to `/dev/null`, which is a place, so
+the work is the same whether anyone reads it. A file that cannot be opened stops the run with an error. Spans are
+flushed in the idle part of a round, when the ring is half full and more than 3 ms remain. The relay reads no frame to
+do this: it counts, as it did.
 
 The protobuf records go to a collector with `tools/otlp_post_pb.exs` of `interactor-otel-guest`, which adds the
 resource, and so the key, at post time.
