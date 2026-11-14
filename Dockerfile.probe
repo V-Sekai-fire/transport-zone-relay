@@ -1,0 +1,8 @@
+FROM debian:bookworm-slim AS build
+RUN apt-get update -q && apt-get install -y -q --no-install-recommends gcc libc6-dev linux-libc-dev && rm -rf /var/lib/apt/lists/*
+COPY scripts/probe/fly_probe.c /src/fly_probe.c
+RUN gcc -std=gnu99 -O2 -Wall -Wextra -Werror -o /fly_probe /src/fly_probe.c
+
+FROM debian:bookworm-slim
+COPY --from=build /fly_probe /usr/local/bin/fly_probe
+CMD ["sh", "-c", "fly_probe; echo PROBE_EXIT=$?; sleep 3600"]

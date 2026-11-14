@@ -1,0 +1,11 @@
+app = "CHANGE-ME"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.probe"
+
+[[vm]]
+  size = "performance-8x"
+
+[processes]
+  app = "sh -c 'fly_probe; echo PROBE_EXIT=$?; sleep 3600'"
