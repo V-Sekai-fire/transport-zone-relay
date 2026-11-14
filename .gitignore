@@ -1,2 +1,5 @@
 *.o
 /build/
+/_build/
+/deps/
+/priv/native/*.so
