@@ -13,9 +13,13 @@
 #     it does not reproduce a C++ run.
 
 from std.os import getenv
+from std.collections import Set
 from std.time import perf_counter_ns
 
 comptime Value = Copyable & Deinitable
+
+# A generator: draws a T from the run's RNG at a rung.
+comptime Gen[T: Value] = def(mut Run, Level) thin -> T
 
 
 @fieldwise_init
@@ -246,6 +250,110 @@ def gen_pair[A: Value, B: Value](
     return Pair[A, B](a^, b^)
 
 
+# Distinct elements, up to fin_bound/32 draws (duplicates collapse, as in the C++).
+def gen_set[T: KeyElement & Value](
+    mut r: Run, lvl: Level, elem: def(mut Run, Level) thin -> T
+) -> Set[T]:
+    var n = r.int_range(0, _scale(lvl))
+    var out = Set[T]()
+    for _ in range(n):
+        out.add(elem(r, lvl))
+    return out^
+
+
+# Up to fin_bound/32 key/value draws; a repeated key keeps its first value
+# (the C++ emplace). Each pair draws key then value.
+def gen_map[K: KeyElement & Value, V: Copyable & Deinitable](
+    mut r: Run,
+    lvl: Level,
+    key_gen: def(mut Run, Level) thin -> K,
+    value_gen: def(mut Run, Level) thin -> V,
+) -> Dict[K, V]:
+    var n = r.int_range(0, _scale(lvl))
+    var out = Dict[K, V]()
+    for _ in range(n):
+        var k = key_gen(r, lvl)
+        var v = value_gen(r, lvl)
+        if k not in out:
+            out[k^] = v^
+    return out^
+
+
+@fieldwise_init
+struct Triple[A: Value, B: Value, C: Value](Copyable, Movable):
+    var first: Self.A
+    var second: Self.B
+    var third: Self.C
+
+
+@fieldwise_init
+struct Quad[A: Value, B: Value, C: Value, D: Value](Copyable, Movable):
+    var first: Self.A
+    var second: Self.B
+    var third: Self.C
+    var fourth: Self.D
+
+
+# Draws run left to right, so RNG use is stable.
+def gen_triple[A: Value, B: Value, C: Value](
+    mut r: Run,
+    lvl: Level,
+    a_gen: def(mut Run, Level) thin -> A,
+    b_gen: def(mut Run, Level) thin -> B,
+    c_gen: def(mut Run, Level) thin -> C,
+) -> Triple[A, B, C]:
+    var a = a_gen(r, lvl)
+    var b = b_gen(r, lvl)
+    var c = c_gen(r, lvl)
+    return Triple[A, B, C](a^, b^, c^)
+
+
+def gen_quad[A: Value, B: Value, C: Value, D: Value](
+    mut r: Run,
+    lvl: Level,
+    a_gen: def(mut Run, Level) thin -> A,
+    b_gen: def(mut Run, Level) thin -> B,
+    c_gen: def(mut Run, Level) thin -> C,
+    d_gen: def(mut Run, Level) thin -> D,
+) -> Quad[A, B, C, D]:
+    var a = a_gen(r, lvl)
+    var b = b_gen(r, lvl)
+    var c = c_gen(r, lvl)
+    var d = d_gen(r, lvl)
+    return Quad[A, B, C, D](a^, b^, c^, d^)
+
+
+# Uniform pick among generators of one type, then one draw from the pick.
+def gen_oneof[T: Value](
+    mut r: Run, lvl: Level, gens: List[Gen[T]]
+) -> T:
+    var i = r.int_range(0, len(gens) - 1)
+    return gens[i](r, lvl)
+
+
+# Map a function over a generator's output.
+def gen_transform[In: Value, Out: Value](
+    mut r: Run,
+    lvl: Level,
+    gen: def(mut Run, Level) thin -> In,
+    f: def(In) thin -> Out,
+) -> Out:
+    return f(gen(r, lvl))
+
+
+# Dependent generation: draw from `gen`, hand the value to `fn`, which names a
+# second generator, then draw from that one.
+def gen_bind[In: Value, Out: Value](
+    mut r: Run,
+    lvl: Level,
+    gen: def(mut Run, Level) thin -> In,
+    f: def(In) thin -> Gen[Out],
+) -> Out:
+    var seed_value = gen(r, lvl)
+    var next_gen = f(seed_value^)
+    return next_gen(r, lvl)
+
+
 # Uniform pick of one value.
 def gen_element[T: Value](mut r: Run, values: List[T]) -> T:
     return values[r.int_range(0, len(values) - 1)].copy()
@@ -406,6 +514,83 @@ def shrink_optional[T: Value](
         var c = t_shrink(x.value())
         for i in range(len(c)):
             out.append(Optional[T](c[i].copy()))
+    return out^
+
+
+# Each element removed, in iteration order.
+def shrink_set[T: KeyElement & Value](s: Set[T]) -> List[Set[T]]:
+    var out = List[Set[T]]()
+    var items = List[T]()
+    for e in s:
+        items.append(e.copy())
+    for i in range(len(items)):
+        var smaller = Set[T]()
+        for j in range(len(items)):
+            if j != i:
+                smaller.add(items[j].copy())
+        out.append(smaller^)
+    return out^
+
+
+# Each entry removed, in iteration order. Values are not shrunk, as in the C++.
+def shrink_map[K: KeyElement & Value, V: Copyable & Deinitable](
+    m: Dict[K, V]
+) -> List[Dict[K, V]]:
+    var out = List[Dict[K, V]]()
+    var keys = List[K]()
+    var vals = List[V]()
+    for item in m.items():
+        keys.append(item.key.copy())
+        vals.append(item.value.copy())
+    for i in range(len(keys)):
+        var smaller = Dict[K, V]()
+        for j in range(len(keys)):
+            if j != i:
+                smaller[keys[j].copy()] = vals[j].copy()
+        out.append(smaller^)
+    return out^
+
+
+# Slot by slot: every shrink of the first, then of the second, and so on.
+def shrink_triple[A: Value, B: Value, C: Value](
+    t: Triple[A, B, C],
+    a_shrink: def(A) thin -> List[A],
+    b_shrink: def(B) thin -> List[B],
+    c_shrink: def(C) thin -> List[C],
+) -> List[Triple[A, B, C]]:
+    var out = List[Triple[A, B, C]]()
+    var a_c = a_shrink(t.first)
+    for i in range(len(a_c)):
+        out.append(Triple[A, B, C](a_c[i].copy(), t.second.copy(), t.third.copy()))
+    var b_c = b_shrink(t.second)
+    for i in range(len(b_c)):
+        out.append(Triple[A, B, C](t.first.copy(), b_c[i].copy(), t.third.copy()))
+    var c_c = c_shrink(t.third)
+    for i in range(len(c_c)):
+        out.append(Triple[A, B, C](t.first.copy(), t.second.copy(), c_c[i].copy()))
+    return out^
+
+
+def shrink_quad[A: Value, B: Value, C: Value, D: Value](
+    t: Quad[A, B, C, D],
+    a_shrink: def(A) thin -> List[A],
+    b_shrink: def(B) thin -> List[B],
+    c_shrink: def(C) thin -> List[C],
+    d_shrink: def(D) thin -> List[D],
+) -> List[Quad[A, B, C, D]]:
+    var out = List[Quad[A, B, C, D]]()
+    var a_c = a_shrink(t.first)
+    for i in range(len(a_c)):
+        out.append(Quad[A, B, C, D](a_c[i].copy(), t.second.copy(), t.third.copy(), t.fourth.copy()))
+    var b_c = b_shrink(t.second)
+    for i in range(len(b_c)):
+        out.append(Quad[A, B, C, D](t.first.copy(), b_c[i].copy(), t.third.copy(), t.fourth.copy()))
+    var c_c = c_shrink(t.third)
+    for i in range(len(c_c)):
+        out.append(Quad[A, B, C, D](t.first.copy(), t.second.copy(), c_c[i].copy(), t.fourth.copy()))
+    var d_c = d_shrink(t.fourth)
+    for i in range(len(d_c)):
+        out.append(Quad[A, B, C, D](t.first.copy(), t.second.copy(), t.third.copy(), d_c[i].copy()))
     return out^
 
 
