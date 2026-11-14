@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -40,6 +41,41 @@ static int person_of(const struct sockaddr_in *a) {
   }
   return -1;
 }
+static uint32_t allow[ZN_MAX_ALLOW];
+static int allow_n, allow_on;
+static struct stat allow_seen;
+int zn_allow_has(uint32_t a) {
+  int lo = 0, hi = allow_n - 1;
+  while (lo <= hi) { int m = (lo + hi) / 2; if (allow[m] == a) return 1; if (allow[m] < a) lo = m + 1; else hi = m - 1; }
+  return 0;
+}
+static int cmp_u32(const void *x, const void *y) { uint32_t a = *(const uint32_t *)x, b = *(const uint32_t *)y; return (a > b) - (a < b); }
+int zn_allow_load(const char *path) {
+  static char buf[ZN_MAX_ALLOW * 16 + 16];
+  int fd = open(path, O_RDONLY), n = 0;
+  struct stat st;
+  if (fd < 0) return -errno;
+  if (fstat(fd, &st) < 0) { int e = errno; close(fd); return -e; }
+  for (;;) { ssize_t r = read(fd, buf + n, sizeof buf - 1 - (size_t)n); if (r < 0) { int e = errno; close(fd); return -e; } if (r == 0) break; n += (int)r; if (n >= (int)sizeof buf - 1) { close(fd); return -EFBIG; } }
+  close(fd);
+  buf[n] = 0;
+  int cnt = 0; char *p = buf;
+  while (*p) {
+    char *e = strchr(p, '\n'); struct in_addr ia;
+    if (e) *e = 0;
+    if (*p && *p != '#') { if (inet_pton(AF_INET, p, &ia) != 1) return -EINVAL; if (cnt == ZN_MAX_ALLOW) return -EFBIG; allow[cnt++] = ia.s_addr; }
+    if (!e) break;
+    p = e + 1;
+  }
+  qsort(allow, (size_t)cnt, sizeof allow[0], cmp_u32);
+  allow_n = cnt; allow_on = 1; allow_seen = st;
+  return cnt;
+}
+static int allow_changed(const char *path) {
+  struct stat st;
+  if (stat(path, &st) < 0) return 0;
+  return st.st_ino != allow_seen.st_ino || st.st_mtime != allow_seen.st_mtime || st.st_size != allow_seen.st_size;
+}
 static int bind_udp(const char *host, uint16_t port) {
   int fd = socket(AF_INET, SOCK_DGRAM, 0);
   struct sockaddr_in a; int big = 1 << 22;
@@ -55,6 +91,10 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
   static uint8_t dgram[ZR_FRAME_MAX + 1];
   int fd[2];
   if (ticks == 0 || ticks > (1u << 16) || port == 0 || port == 65535) return -EINVAL;
+  const char *allow_path = getenv("ZONE_ALLOW_FILE");
+  allow_on = 0; allow_n = 0;
+  if (allow_path && *allow_path) { int lr = zn_allow_load(allow_path); if (lr < 0) return lr; }
+  else if (strncmp(host, "127.", 4) != 0) return -EPERM;
   memset(out, 0, sizeof *out); memset(table, 0, sizeof table); people = 0;
   for (int z = 0; z < ZN_MAX_ZONES; z++) { zr_reset(&zones[z]); for (int s = 0; s < ZR_SLOTS; s++) seated[z][s] = -1; }
   fd[0] = bind_udp(host, port);
@@ -69,6 +109,14 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
   for (uint32_t t = 0; counted < ticks; t++, rounds++) {
     int64_t d = next - now_ns();
     if (d > 0) { struct timespec r; r.tv_sec = (time_t)(d / 1000000000LL); r.tv_nsec = (long)(d % 1000000000LL); nanosleep(&r, 0); }
+    if (allow_on && rounds % ZN_ALLOW_POLL_TICKS == 0 && allow_changed(allow_path) && zn_allow_load(allow_path) >= 0) {
+#ifndef ZN_PLANT_NO_EVICT
+      for (int p = 0; p < people; p++)
+        if (who[p].slot >= 0 && !zn_allow_has(who[p].a.sin_addr.s_addr)) {
+          zr_leave(&zones[p / ZR_SLOTS], p); seated[p / ZR_SLOTS][who[p].slot] = -1; who[p].slot = -1; out->evicted++;
+        }
+#endif
+    }
     int64_t t0 = now_ns(), first = -1;
     uint32_t fi0 = out->frames_in, do0 = out->datagrams_out, re0 = out->refused;
     for (int half = 0; half < 2; half++) {
@@ -78,6 +126,12 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
         if (n < 0) break;
         if (first < 0) first = now_ns();
         if (n > ZR_FRAME_MAX) { out->refused++; continue; }
+#ifdef ZN_PLANT_ALLOW_OFF
+        if (0) {
+#else
+        if (allow_on && !zn_allow_has(from.sin_addr.s_addr)) {
+#endif
+          out->unlisted++; continue; }
         int p = person_of(&from);
         if (p < 0) { out->strangers++; continue; }
         int zi = p / ZR_SLOTS;

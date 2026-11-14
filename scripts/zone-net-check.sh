@@ -59,6 +59,23 @@ if [ "$(uname -s)" = Linux ]; then
   echo "sendmmsg planted: wrong socket and short batch caught ($(grep '^RESULT' "$BIN/mm_short.out"))"
 fi
 
+# The allowlist (Linux: the check binds sources 127.0.0.2-4). Closed by default, an unlisted address gets nothing, and a member taken off the
+# list by a rename loses its seat. Two planted defects: the gate off, and eviction off.
+if [ "$(uname -s)" = Linux ]; then
+  for arm in "" _off _noevict; do
+    case "$arm" in _off) def=-DZN_PLANT_ALLOW_OFF;; _noevict) def=-DZN_PLANT_NO_EVICT;; *) def=;; esac
+    $CC $STRICT $def -c "$SRC/zone_net.c" -o "$BIN/zone_net_allow$arm.o"
+    $CC -std=gnu99 -O2 -Wall -Wextra -Werror -pthread "$SRC/zone_allow_check.c" "$BIN/zone_net_allow$arm.o" "$BIN/zone_relay.o" -o "$BIN/zone_allow_check$arm"
+  done
+  "$BIN/zone_allow_check" > "$BIN/allow.out" || { cat "$BIN/allow.out"; echo "the allowlist check failed"; exit 1; }
+  echo "allowlist $(grep '^LEDGER' "$BIN/allow.out")"
+  rc=0; "$BIN/zone_allow_check_off" > "$BIN/allow_off.out" || rc=$?
+  if [ "$rc" != 1 ] || ! grep -q '^RESULT: FAIL an address that is not listed was given a frame' "$BIN/allow_off.out"; then cat "$BIN/allow_off.out"; echo "a relay with the gate off was not caught"; exit 1; fi
+  rc=0; "$BIN/zone_allow_check_noevict" > "$BIN/allow_noevict.out" || rc=$?
+  if [ "$rc" != 1 ] || ! grep -q -E '^RESULT: FAIL (a removed member was still relayed|taking B off the list)' "$BIN/allow_noevict.out"; then cat "$BIN/allow_noevict.out"; echo "a relay that keeps a removed member seated was not caught"; exit 1; fi
+  echo "allowlist planted: gate off and eviction off both caught"
+fi
+
 # sum <field> <program> [env]: runs the check RUNS times, prints each LEDGER line, leaves the sum of one field in $total.
 sum() {
   local field="$1" tag="$2"; shift 2
