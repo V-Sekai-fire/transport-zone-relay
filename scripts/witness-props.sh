@@ -12,7 +12,7 @@ mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT
 
 build() { # build <native dir> <out>
-  "$mojo" build -I "$1" -I "$root/thirdparty/witness-mojo" "$1/zone_relay_props.mojo" -o "$2"
+  "$mojo" build -I "$1" -I "$root/thirdparty/witness-mojo/src" "$1/zone_relay_props.mojo" -o "$2"
 }
 
 echo "== the relay"
