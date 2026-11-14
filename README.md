@@ -55,3 +55,6 @@ out side by side.
 ## Licence
 
 MIT; see `LICENSE`.
+
+`thirdparty/fdb-sqlite` is a subtree of `V-Sekai-fire/datasource-store`, the SQLite VFS over FoundationDB. It keeps
+its own terms (Apache-2.0 OR MIT) and nothing in this repository calls it yet.
