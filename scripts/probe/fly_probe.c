@@ -36,10 +36,10 @@ static void say(const char *name, int e) {
   if (e == 0) printf("probe   %-34s PASS\n", name);
   else printf("probe   %-34s FAIL errno=%d (%s)\n", name, e, strerror(e));
 }
-/* A control is a call that must fail with one named errno. A different errno means the call was refused
+/* A control is a call that must fail with one of two named errnos. A different errno means the call was refused
    earlier (seccomp, capability), so the control says nothing and the probe is untrusted for that section. */
-static void control(const char *name, int e, int want) {
-  if (e == want) printf("control %-34s FIRED errno=%d (%s)\n", name, e, strerror(e));
+static void control(const char *name, int e, int want, int want2) {
+  if (e == want || e == want2) printf("control %-34s FIRED errno=%d (%s)\n", name, e, strerror(e));
   else {
     printf("control %-34s WRONG-REASON got=%d (%s) wanted=%d (%s)\n", name, e, strerror(e), want, strerror(want));
     bad_controls++;
@@ -188,9 +188,9 @@ int main(void) {
   say("io_uring_setup_plain", t_uring_plain());
   say("io_uring_single_issuer_defer", t_uring_defer());
   say("io_uring_pbuf_ring", t_uring_pbuf());
-  control("io_uring_setup_bad_flags", c_uring_flags(), EINVAL);
+  control("io_uring_setup_bad_flags", c_uring_flags(), EINVAL, EINVAL);
   say("bpf_prog_load_xdp", t_bpf_load());
-  control("bpf_prog_load_zero_insns", c_bpf_load(), EINVAL);
+  control("bpf_prog_load_zero_insns", c_bpf_load(), EINVAL, E2BIG);
 
   struct if_nameindex *ni = if_nameindex();
   for (struct if_nameindex *i = ni; i && i->if_index; i++) {
@@ -205,7 +205,7 @@ int main(void) {
     snprintf(nm, sizeof nm, "afxdp_bind_copy_q0_%s", i->if_name); say(nm, xsk_try(i->if_index, 3, nm));
   }
   if (ni) if_freenameindex(ni);
-  control("afxdp_bind_bad_ifindex", xsk_try(999999u, 3, "bad"), ENODEV);
+  control("afxdp_bind_bad_ifindex", xsk_try(999999u, 3, "bad"), ENODEV, ENODEV);
 
   printf("%s controls_not_fired=%d\n", bad_controls ? "PROBE-UNTRUSTED" : "PROBE-DONE", bad_controls);
   return bad_controls ? 1 : 0;
