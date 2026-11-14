@@ -1,6 +1,6 @@
 # Caps on what a zone saves
 
-Status: set on 2026-10-09 by review. `src/zone_caps.h` holds every number as a constant and `src/zone_caps.c` enforces them, but nothing calls it yet: the relay saves nothing, and the store in `thirdparty/fdb-sqlite` does not call it either. `bash scripts/zone-caps-check.sh` checks it.
+Status: set on 2026-10-09 by review. `src/zone_caps.h` holds every number as a constant and `src/zone_caps.c` enforces them, but nothing calls it yet: the relay saves nothing, and the store in `thirdparty/fdb-sqlite` does not call it either. The properties are witness-cpp's, in `test/zone_caps_witness.cpp`, and `bash scripts/zone-caps-check.sh` holds the two source rules.
 
 ## Why caps
 
@@ -28,7 +28,7 @@ In cold storage the worst case is 33,554,432 bytes a day for 30 days, about 1,00
 
 ## The constants
 
-Every number is a `#define` in `src/zone_caps.h`, and `src/zone_caps.c` holds no number but 0 and 1. The gate fails if it does, and a planted literal shows that the rule can fail. `ZC_DB_BYTES`, `ZC_DAY_BYTES` and `ZC_COLD_BYTES` are products of the others, and the check compares them with the numbers written in the table above.
+Every number is a `#define` in `src/zone_caps.h`, and `src/zone_caps.c` holds no number but 0 and 1. `scripts/zone-caps-check.sh` fails if it does, and a planted literal shows that the rule can fail. `ZC_DB_BYTES`, `ZC_DAY_BYTES` and `ZC_COLD_BYTES` are products of the others. The model in the witness-cpp test is written from the numbers of the table above and shares no constant with the header, so a wrong constant is a disagreement there.
 
 `zc_admit` takes an owner, a kind (data, object, world or pose), a byte count and the time in seconds. It returns `ZC_OK` or the reason it refused, and a refusal leaves the state as it was. A save rewrites the whole image, so the daily count adds the size of the image after the save, not the bytes of the change.
 
@@ -36,14 +36,15 @@ World data (a prop spawned by the zone) is charged to no player, only to the dat
 
 ## Controls that must fail
 
-`scripts/zone-caps-check.sh` runs the check and then seven planted defects, and each must fail it.
+`test/zone_caps_witness.cpp` runs witness-cpp properties on `src/zone_caps.c`: every verdict equals the model, nothing goes past a cap, a refusal leaves the state byte for byte, a pose is never saved, and a save is due one second after the last. Two generators feed them, one random and one that fills the database and then saves until the day's bytes are reached, so every verdict is reached. Eight planted builds run the same properties on a copy of the source with one defect written in at configure time, and each must fail:
 
-1. A 257th page admitted (`extra_page`). The check writes 257 pages and expects a refusal.
-2. A player's 200,000 bytes and one byte more (`extra_byte`), for data and for objects.
-3. No cap on the day (`no_day_cap`) and a day that never ends (`day_never_ends`). The check spends 33,554,432 bytes, expects the next write refused, and expects it admitted when 86,400 s have passed.
+1. A 257th page admitted (`extra_page`).
+2. A player's 200,000 bytes and one byte more (`extra_byte`).
+3. No cap on the day (`no_day_cap`), and a day that never ends (`day_never_ends`).
 4. A pose saved (`pose_saved`).
-5. A refusal that charges the day (`refusal_charges`). The check compares the state byte for byte before and after each refusal, so the world comes back at the last good state.
+5. A refusal that charges the day (`refusal_charges`), which the byte for byte comparison catches.
 6. A seat that does not exist admitted (`any_seat`).
+7. A merge window of more than one second (`merge_window`).
 
 ## What the review also changed
 
