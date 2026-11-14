@@ -5,6 +5,20 @@ build the relay and its load generator in a container and run them on a Fly mach
 remotely, so Docker is not needed here. Set `app` in the toml to a new app name, and destroy the
 app when the run is over; a dedicated IPv4 costs money while the app exists.
 
+## What these numbers are
+
+The sweep below is a loopback test on one machine, and its loader did not read the replies, so
+"sent" means accepted by `sendto`, not received by anyone. It shows how the relay scales with
+processes and cores. It does not show delivery, latency across a network, or a capacity for real
+clients. `src/zone_load.c` now reads every reply and counts delivery and round trip at the
+receiver; the table was made before that and is kept as it was.
+
+A two-machine run, with the loader on a second Fly machine sending to the relay machine's public
+address, delivered nothing: the relay saw 0 of about 205,000 frames. Fly's UDP proxy did not carry
+the traffic from one machine to a sibling's public address, or the relay's binding to
+`fly-global-services` did not accept it; which was not found out. That run says nothing about the
+relay.
+
 ## The sweep
 
 `fly.toml` runs `fly-sweep.sh` on one `performance-8x` machine (8 dedicated cores, Linux 6.12).
