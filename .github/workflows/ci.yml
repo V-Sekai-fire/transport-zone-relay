@@ -47,3 +47,7 @@ jobs:
           export PATH="$RUNNER_TEMP/mojo/bin:$PATH"
           mojo build -I native native/zone_relay_check.mojo -o "$RUNNER_TEMP/zrc"
           "$RUNNER_TEMP/zrc" src/testdata/zone_relay.trace
+      - name: Property tests of the Mojo relay with the witness ladder, and the broken relays they must catch
+        run: |
+          export PATH="$RUNNER_TEMP/mojo/bin:$PATH"
+          bash scripts/witness-props.sh
