@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "zone_net.h"
 #include "zone_relay.h"
+#include "otel_span.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,6 +19,7 @@ static int32_t table[TABLE];
 static int32_t seated[ZN_MAX_ZONES][ZR_SLOTS];
 static int64_t lat[1 << 16];
 static int people;
+static otel_t ot_store;
 static int64_t now_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec; }
 static int cmp(const void *x, const void *y) { int64_t a = *(const int64_t *)x, b = *(const int64_t *)y; return (a > b) - (a < b); }
 static int same(const struct sockaddr_in *x, const struct sockaddr_in *y) { return x->sin_addr.s_addr == y->sin_addr.s_addr && x->sin_port == y->sin_port; }
@@ -55,11 +57,16 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
   fd[1] = bind_udp(host, (uint16_t)(port + 1));
   if (fd[0] < 0 || fd[1] < 0) { if (fd[0] >= 0) close(fd[0]); if (fd[1] >= 0) close(fd[1]); return -EADDRINUSE; }
   int64_t start = now_ns(), next = start + ZN_TICK_NS;
+  otel_t *ot = 0; uint64_t run_sid = 0;
+  { const char *op = getenv("ZONE_OTEL");
+    if (op && *op && otel_open(&ot_store, "zone-relay", getenv("OTEL_RESOURCE_ATTRIBUTES"), op, 0) == 0) {
+      const char *of = getenv("ZONE_OTEL_FORMAT"); ot = &ot_store; ot->pb = of && strcmp(of, "pb") == 0; run_sid = otel_id(ot); } }
   uint32_t counted = 0, rounds = 0;
   for (uint32_t t = 0; counted < ticks; t++, rounds++) {
     int64_t d = next - now_ns();
     if (d > 0) { struct timespec r; r.tv_sec = (time_t)(d / 1000000000LL); r.tv_nsec = (long)(d % 1000000000LL); nanosleep(&r, 0); }
     int64_t t0 = now_ns(), first = -1;
+    uint32_t fi0 = out->frames_in, do0 = out->datagrams_out, re0 = out->refused;
     for (int half = 0; half < 2; half++) {
       for (;;) {
         struct sockaddr_in from; socklen_t fl = sizeof from;
@@ -94,6 +101,13 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
     }
     if (slow_ns) { int64_t end = now_ns() + slow_ns; while (now_ns() < end) { } }
     int64_t t1 = now_ns();
+    if (ot) {
+      static const char *const k[5] = { "people", "frames_in", "datagrams_out", "refused", "tick" };
+      int64_t v[5]; v[0] = people; v[1] = (int64_t)out->frames_in - fi0; v[2] = (int64_t)out->datagrams_out - do0;
+      v[3] = (int64_t)out->refused - re0; v[4] = counted;
+      otel_span(ot, "relay.tick", run_sid, t0, t1, 5, k, v);
+      if (ot->n >= OTEL_CAP / 2 && next - t1 > 3000000) otel_flush(ot);
+    }
     uint32_t wall = (uint32_t)((t1 - start) / ZN_TICK_NS);
     if (wall <= counted) wall = counted + 1;
     if (wall > counted + 1) out->overruns++;
@@ -110,6 +124,12 @@ int zn_run(const char *host, uint16_t port, uint32_t ticks, uint32_t slow_ns, zn
 #endif
   }
   out->ticks = counted; out->people = (uint32_t)people;
+  if (ot) {
+    static const char *const k[4] = { "ticks", "people", "frames_in", "datagrams_out" };
+    int64_t v[4]; v[0] = counted; v[1] = people; v[2] = (int64_t)out->frames_in; v[3] = (int64_t)out->datagrams_out;
+    otel_span_as(ot, run_sid, "relay.run", 0, start, now_ns(), 4, k, v);
+    otel_close(ot);
+  }
   for (int z = 0; z < (people + ZR_SLOTS - 1) / ZR_SLOTS; z++) out->unread += zr_unread(&zones[z]);
   qsort(lat, rounds, sizeof(int64_t), cmp);
   out->p50_ns = lat[rounds / 2]; out->p95_ns = lat[(rounds * 95u) / 100]; out->p99_ns = lat[(rounds * 99u) / 100]; out->max_ns = lat[rounds - 1];
