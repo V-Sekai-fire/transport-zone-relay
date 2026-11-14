@@ -1,0 +1,11 @@
+app = "CHANGE-ME"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[vm]]
+  size = "performance-8x"
+
+[processes]
+  app = "sh -c 'fly-ab.sh; echo SWEEP_DONE; sleep 3600'"
