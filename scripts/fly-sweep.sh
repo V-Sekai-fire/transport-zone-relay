@@ -22,7 +22,7 @@ for r in $RELAYS; do
       zone_load $((port + 2 * i)) "$share" "$TICKS" > /tmp/load.$i.out 2>&1 &
       i=$((i + 1))
     done
-    wait $pids
+    wait
     worst=0; refused=0; over=0; slow=0; out=0; p99=0; dmin=100.00; rttmax=0
     i=0
     while [ "$i" -lt "$r" ]; do
