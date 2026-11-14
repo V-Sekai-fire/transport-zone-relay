@@ -1,0 +1,21 @@
+name: probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev/transport-probe]
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the probe
+        run: gcc -std=gnu99 -O2 -Wall -Wextra -Werror -o fly_probe scripts/probe/fly_probe.c
+      - name: Probe as root on the runner
+        run: sudo ./fly_probe | tee probe-root.txt
+      - name: Probe as an ordinary user
+        run: ./fly_probe | tee probe-user.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe
+          path: probe-*.txt
