@@ -1,0 +1,35 @@
+app = "CHANGE-ME"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  RELAY_IP = "set-after-allocate-v4"
+  TICKS = "8000"
+
+[processes]
+  relay = "fly-public.sh"
+  loader = "fly-loadtest.sh"
+
+[[vm]]
+  size = "performance-4x"
+  processes = ["relay"]
+
+[[vm]]
+  size = "performance-4x"
+  processes = ["loader"]
+
+[[services]]
+  protocol = "udp"
+  internal_port = 47600
+  processes = ["relay"]
+  [[services.ports]]
+    port = 47600
+
+[[services]]
+  protocol = "udp"
+  internal_port = 47601
+  processes = ["relay"]
+  [[services.ports]]
+    port = 47601
