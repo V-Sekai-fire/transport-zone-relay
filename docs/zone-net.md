@@ -64,7 +64,7 @@ up to 0.6% either way, so they drift against it. It passes when no viewer got a 
 from what was sent or a frame of its own, every frame came from the socket of its half, and every
 viewer got at least 80% of the 240 frames the others sent. It prints a `LEDGER` line with the
 honest frames refused and the median and the 99th percentile of the tick. It does not fail on a
-time: during development a run is held to the run before it, not to the 4 ms budget of
+time: during development a run is held to the run before it, not to the 4e-3 s budget of
 RFD66606-2442, which is where the work is going and not a gate on the way.
 
 The script runs the check three times and adds the lines up. Two controls must show first:
@@ -72,7 +72,7 @@ The script runs the check three times and adds the lines up. Two controls must s
 | Control | What is planted | What it must do |
 | --- | --- | --- |
 | `-DZN_PLANT_HALF` | the relay sends each frame from the socket of the other half | `a frame came from the socket of the other half` |
-| `ZONE_SLOW_NS=6000000` | 6 ms of busy work in every tick, the entity server's own planted handler | make the median tick worse by at least 5 ms |
+| `ZONE_SLOW_NS=6000000` | 6e-3 s of busy work in every tick, the entity server's own planted handler | make the median tick worse by at least 5e-3 s |
 
 ## Clocks that are not the relay's
 
@@ -105,7 +105,7 @@ The rule before this one opened a half 5 ticks after the frame it last took. Tha
 The socket layer also counts its ticks by the wall and not by its rounds: after a round that
 took longer than a tick it ticks every zone once for each tick the wall has had.
 
-The check runs the relay with 25 ms of planted work in every round, more than a tick and a
+The check runs the relay with 2.5e-2 s of planted work in every round, more than a tick and a
 half. It passes when no honest frame is refused and every viewer still gets its frames. A relay
 built with `-DZN_PLANT_NO_CATCH_UP`, which counts one tick a round, must fail it.
 
@@ -115,7 +115,7 @@ built with `-DZN_PLANT_NO_CATCH_UP`, which counts one tick a round, must fail it
 people. The loader sends as clients would: client `k` sits in slot `k % 4` and sends its two frames
 on the tick where `t % 6` is 0, 1, 3 or 4 for slots 0 to 3. Its frames are filler and its sockets
 are never read, so the kernel drops what the relay sends them; the relay's cost of sending is
-still paid. The sweep prints one line a size and the first size at which the tail passes 4 ms. It
+still paid. The sweep prints one line a size and the first size at which the tail passes 4e-3 s. It
 measures and does not gate, and nothing waits on it.
 
 Each viewer is handed six frames an interval at every size, because a zone is four people. The
@@ -124,7 +124,7 @@ product the plan asks for is people times six.
 ## What was measured
 
 On the development Mac, three runs of the socket check together: 0 honest frames refused of 960,
-a median tick of about 10 microseconds, and 6 ms a tick with the planted handler. The first run
+a median tick of about 1e-5 s, and 6e-3 s a tick with the planted handler. The first run
 of this layer, under the old rule, refused 7 of 320. The Mac's loopback is not a place to compare times.
 
 On Linux (a Fly performance-2x machine, kernel 6.12, two vCPUs shared with the load generator), the
@@ -133,15 +133,15 @@ syscalls of the old layer at 256 people were `sendto` 72,928 calls and 81% of th
 reads with `recvmmsg` (up to 32 datagrams) and sends the three of a frame with one `sendmmsg`. Two rounds
 of the sweep, the old layer and the new one interleaved on one machine:
 
-| People | Median tick, old | Median tick, new | 99th, old | 99th, new | ns a datagram out, old | ns a datagram out, new |
+| People | Median tick, old (s) | Median tick, new (s) | 99th, old (s) | 99th, new (s) | Seconds a datagram out, old | Seconds a datagram out, new |
 | --- | --- | --- | --- | --- | --- | --- |
-| 16 | 129, 129 us | 108, 112 us | 201, 202 us | 178, 209 us | 6035, 6053 | 5165, 5469 |
-| 256 | 1,968, 1,995 us | 1,625, 1,655 us | 2.69, 2.79 ms | 2.43, 2.33 ms | 5497, 5605 | 4626, 4659 |
+| 16 | 1.29e-4, 1.29e-4 | 1.08e-4, 1.12e-4 | 2.01e-4, 2.02e-4 | 1.78e-4, 2.09e-4 | 6.035e-6, 6.053e-6 | 5.165e-6, 5.469e-6 |
+| 256 | 1.968e-3, 1.995e-3 | 1.625e-3, 1.655e-3 | 2.69e-3, 2.79e-3 | 2.43e-3, 2.33e-3 | 5.497e-6, 5.605e-6 | 4.626e-6, 4.659e-6 |
 
 Both sent the same 10,080 and 160,864 datagrams and both delivered 98.1% and 97.9%, so these rows
 compare like with like. At 1,024 people the loader and the relay compete for two vCPUs and neither layer
 keeps up: the old layer delivered 55.5% and 49.8% of what was due, the new one 83.6% and 83.7%, with
-the 99th percentile of the tick at 10.1 and 11.0 ms against 7.8 ms. At 4,096 people the runs scatter
+the 99th percentile of the tick at 1.01e-2 s and 1.10e-2 s against 7.8e-3 s. At 4,096 people the runs scatter
 too much to say anything (datagrams out from 506,162 to 997,686); no number of people is claimed.
 
 ## What the check does not show
@@ -151,5 +151,5 @@ too much to say anything (datagrams out from 506,162 to 997,686); no number of p
 - A send that batches across frames. One `sendmmsg` carries the three sends of one frame only: the state
   machine keeps the latest frame of a half and a second frame of that half on the same tick would replace
   the first before it was sent, so a send queue across frames needs a flush on that conflict and a test for it.
-- Absolute time. On the development Mac one loopback datagram costs about 0.4 ms in either
+- Absolute time. On the development Mac one loopback datagram costs about 4e-4 s in either
   program, so times here are good for comparing one run with the next and for nothing else.
