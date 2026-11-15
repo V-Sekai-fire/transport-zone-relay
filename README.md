@@ -44,3 +44,5 @@ MIT; see `LICENSE`.
 
 `thirdparty/fdb-sqlite` is a subtree of `V-Sekai-fire/datasource-store`, the SQLite VFS over FoundationDB. It keeps
 its own terms (Apache-2.0 OR MIT) and nothing in this repository calls it yet.
+
+`thirdparty/presence-gates` is a subtree of `V-Sekai-fire/interactor-presence-gates` (MIT), the demo of this relay: four client programs sending by UDP to it with the load generator beside them (`tools/clients.exs`), the gates that judge what the relay hands out, and the movie of the four worlds (`tests/world_movie.gd`). It needs a double-precision Godot editor and the sibling guest repositories listed in its README. Run its driver from here with `RELAY=.`. The videos are not in it: each is hundreds of megabytes.
