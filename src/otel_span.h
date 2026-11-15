@@ -73,7 +73,7 @@ static inline uint64_t otel_wall(const otel_t *o, int64_t mono_ns) { return (uin
 /* Records a finished span, between two monotonic times, and returns it for its attributes. */
 static inline otel_rec_t *otel_begin(otel_t *o, uint64_t sid, const char *name, uint64_t parent, int64_t mono0, int64_t mono1) {
   otel_rec_t *r;
-  if (o->n >= OTEL_CAP) { o->dropped++; r = &o->scratch; } else r = &o->r[o->n++];
+  if (o->n >= OTEL_CAP) { o->dropped++; r = &o->scratch; } else { r = &o->r[o->n++]; }
   memset(r, 0, sizeof *r);
   r->t0 = otel_wall(o, mono0); r->t1 = otel_wall(o, mono1); r->sid = sid; r->psid = parent; r->name = name;
   r->tid_hi = o->tid_hi; r->tid_lo = o->tid_lo; r->kind = 1;
@@ -81,7 +81,7 @@ static inline otel_rec_t *otel_begin(otel_t *o, uint64_t sid, const char *name, 
 }
 
 static inline void otel_put(otel_rec_t *r, const char *key, uint8_t kind, double d, int64_t i, const char *s) {
-  if (r->nattr >= OTEL_ATTRS) return;
+  if (r->nattr >= OTEL_ATTRS) { return; }
   otel_attr_t *a = &r->a[r->nattr++];
   a->key = key; a->kind = kind; a->d = d; a->i = i; a->s = s;
 }
@@ -97,8 +97,8 @@ static inline void otel_error(otel_rec_t *r, const char *type, const char *msg) 
  * ResourceSpans with the resource it reads from its own environment. */
 static inline uint32_t otel_pb_varint(uint8_t *b, uint64_t v) {
   uint32_t n = 0;
-  while (v >= 0x80) { if (b) b[n] = (uint8_t)(v | 0x80); n++; v >>= 7; }
-  if (b) b[n] = (uint8_t)v;
+  while (v >= 0x80) { if (b) { b[n] = (uint8_t)(v | 0x80); } n++; v >>= 7; }
+  if (b) { b[n] = (uint8_t)v; }
   return n + 1;
 }
 static inline uint32_t otel_pb_bytes(uint8_t *b, uint8_t tag, const void *p, uint32_t len) {
@@ -110,13 +110,13 @@ static inline uint32_t otel_pb_text(uint8_t *b, uint8_t tag, const char *s) {
   size_t l = strlen(s);
   return otel_pb_bytes(b, tag, s, (uint32_t)(l > OTEL_STR_MAX ? OTEL_STR_MAX : l));
 }
-static inline void otel_pb_be(uint8_t *b, uint64_t v) { for (int i = 0; i < 8; i++) b[i] = (uint8_t)(v >> (56 - 8 * i)); }
-static inline void otel_pb_le(uint8_t *b, uint64_t v) { for (int i = 0; i < 8; i++) b[i] = (uint8_t)(v >> (8 * i)); }
+static inline void otel_pb_be(uint8_t *b, uint64_t v) { for (int i = 0; i < 8; i++) { b[i] = (uint8_t)(v >> (56 - 8 * i)); } }
+static inline void otel_pb_le(uint8_t *b, uint64_t v) { for (int i = 0; i < 8; i++) { b[i] = (uint8_t)(v >> (8 * i)); } }
 
 /* A KeyValue with a string, an int or a double: the AnyValue fields 1, 3 and 4. */
 static inline uint32_t otel_pb_kv(uint8_t *b, uint8_t tag, const char *key, uint8_t kind, double d, int64_t i, const char *s) {
   uint8_t kv[OTEL_STR_MAX * 2 + 32], any[OTEL_STR_MAX + 16]; uint32_t m = otel_pb_text(kv, 0x0A, key), a = 0;
-  if (kind == 3) a = otel_pb_text(any, 0x0A, s);
+  if (kind == 3) { a = otel_pb_text(any, 0x0A, s); }
   else if (kind == 1) { any[0] = 0x18; a = 1 + otel_pb_varint(any + 1, (uint64_t)i); }
   else { uint64_t bits; memcpy(&bits, &d, 8); any[0] = 0x21; otel_pb_le(any + 1, bits); a = 9; }
   m += otel_pb_bytes(kv + m, 0x12, any, a);
@@ -137,7 +137,7 @@ static inline uint32_t otel_pb_span(const otel_rec_t *r, uint8_t *b) {
   if (r->psid) { otel_pb_be(id, r->psid); n += otel_pb_bytes(b ? b + n : 0, 0x22, id, 8); }
 #endif
   n += otel_pb_text(b ? b + n : 0, 0x2A, r->name);
-  if (b) b[n] = 0x30;
+  if (b) { b[n] = 0x30; }
   n++; n += otel_pb_varint(b ? b + n : 0, r->kind);
   if (b) { b[n] = 0x39; otel_pb_le(b + n + 1, r->t0); b[n + 9] = 0x41;
 #ifdef OTEL_PLANT_PBTIMES
@@ -160,7 +160,7 @@ static inline uint32_t otel_pb_span(const otel_rec_t *r, uint8_t *b) {
   if (b) { b[n] = 0x60; b[n + 1] = 0; b[n + 2] = 0x70; b[n + 3] = 0; } n += 4; /* dropped_events_count, dropped_links_count */
 #ifndef OTEL_PLANT_PBSTATUS
   { uint8_t st[OTEL_STR_MAX + 16]; uint32_t s = 0; /* Status: message 2, code 3 */
-    if (r->exc_msg) s += otel_pb_text(st, 0x12, r->exc_msg);
+    if (r->exc_msg) { s += otel_pb_text(st, 0x12, r->exc_msg); }
     st[s++] = 0x18; st[s++] = r->exc_msg ? 2 : 1;
     n += otel_pb_bytes(b ? b + n : 0, 0x7A, st, s); }
 #endif
@@ -171,7 +171,7 @@ static inline uint32_t otel_pb_span(const otel_rec_t *r, uint8_t *b) {
 static inline void otel_flush(otel_t *o) {
   static const char scope[] = "entity-server";
   uint8_t head[32], tmp[4096], sc[64], tail[64];
-  if (!o->out || o->n == 0) return;
+  if (!o->out || o->n == 0) { return; }
   uint32_t sclen = otel_pb_bytes(sc, 0x0A, scope, (uint32_t)strlen(scope)); /* InstrumentationScope: name 1, version 2, dropped_attributes_count 4 */
   sclen += otel_pb_bytes(sc + sclen, 0x12, "1", 1);
   sc[sclen++] = 0x20; sc[sclen++] = 0;
@@ -191,5 +191,5 @@ static inline void otel_flush(otel_t *o) {
   o->n = 0;
 }
 
-static inline void otel_close(otel_t *o) { otel_flush(o); if (o->out) fclose(o->out); o->out = 0; }
+static inline void otel_close(otel_t *o) { otel_flush(o); if (o->out) { fclose(o->out); } o->out = 0; }
 #endif

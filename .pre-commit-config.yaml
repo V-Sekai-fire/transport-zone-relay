@@ -1,0 +1,12 @@
+# The one rule so far: every if, else, for, while and do of C and C++ has braces, even around one statement. The first-party
+# code only; thirdparty/ keeps the style it arrived with.
+exclude: ^thirdparty/
+repos:
+  - repo: local
+    hooks:
+      - id: braces
+        name: braces around every control statement in C and C++
+        language: python
+        additional_dependencies: [clang-format==22.1.5]
+        entry: python scripts/braces.py --check
+        types_or: [c, c++]

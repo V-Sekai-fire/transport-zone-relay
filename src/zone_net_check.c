@@ -17,20 +17,20 @@
 static int got[N], corrupt[N], wrong_half[N], own[N];
 static void fill(uint8_t *f, int id, int send, int half) {
   f[0] = (uint8_t)id; f[1] = (uint8_t)send; f[2] = (uint8_t)half;
-  for (int j = 3; j < FRAME; j++) f[j] = (uint8_t)(id * 31 + send * 7 + half * 3 + j);
+  for (int j = 3; j < FRAME; j++) { f[j] = (uint8_t)(id * 31 + send * 7 + half * 3 + j); }
 }
 static void drain(int fd, int id) {
   uint8_t f[1600], want[FRAME]; struct sockaddr_in from; socklen_t fl;
   for (;;) {
     fl = sizeof from;
     ssize_t n = recvfrom(fd, f, sizeof f, 0, (struct sockaddr *)&from, &fl);
-    if (n < 0) return;
+    if (n < 0) { return; }
     got[id]++;
     if (n != FRAME || f[0] >= N || f[1] >= SENDS || f[2] > 1) { corrupt[id]++; continue; }
     fill(want, f[0], f[1], f[2]);
-    if (memcmp(f, want, FRAME) != 0) corrupt[id]++;
-    if (f[0] == id) own[id]++;
-    if (ntohs(from.sin_port) != PORT + f[2]) wrong_half[id]++;
+    if (memcmp(f, want, FRAME) != 0) { corrupt[id]++; }
+    if (f[0] == id) { own[id]++; }
+    if (ntohs(from.sin_port) != PORT + f[2]) { wrong_half[id]++; }
   }
 }
 static void *client(void *arg) {
@@ -55,18 +55,18 @@ static void *client(void *arg) {
 int main(void) {
   const char *sl = getenv("ZONE_SLOW_NS"); uint32_t slow = sl ? (uint32_t)atol(sl) : 0;
   zn_report_t r; pthread_t th[N]; int bad = 0, least = 1 << 30;
-  for (int i = 0; i < N; i++) pthread_create(&th[i], 0, client, (void *)(intptr_t)i);
+  for (int i = 0; i < N; i++) { pthread_create(&th[i], 0, client, (void *)(intptr_t)i); }
   int rc = zn_run("127.0.0.1", PORT, 320, slow, &r);
   int behind = slow > 15625000u;
-  for (int i = 0; i < N; i++) pthread_join(th[i], 0);
+  for (int i = 0; i < N; i++) { pthread_join(th[i], 0); }
   printf("ZONE rc=%d ticks=%u people=%u frames_in=%u datagrams_out=%u refused=%u unread=%llu send_failed=%u overruns=%u p50=%lldns p99=%lldns max=%lldns\n",
          rc, r.ticks, r.people, r.frames_in, r.datagrams_out, r.refused, (unsigned long long)r.unread, r.send_failed, r.overruns,
          (long long)r.p50_ns, (long long)r.p99_ns, (long long)r.max_ns);
   for (int i = 0; i < N; i++) {
     printf("ZONE viewer=%d got=%d corrupt=%d wrong_half=%d own=%d\n", i, got[i], corrupt[i], wrong_half[i], own[i]);
-    if (corrupt[i] || own[i]) bad |= 1;
-    if (wrong_half[i]) bad |= 2;
-    if (got[i] < least) least = got[i];
+    if (corrupt[i] || own[i]) { bad |= 1; }
+    if (wrong_half[i]) { bad |= 2; }
+    if (got[i] < least) { least = got[i]; }
   }
   if (rc != 0 || r.people != N) { puts("RESULT: FAIL no zone of four"); return 1; }
   if (bad & 1) { puts("RESULT: FAIL a viewer was handed a frame that was not sent to it as it was sent"); return 1; }
