@@ -1,0 +1,20 @@
+rung	date	change	number	before	after	end	note
+0	2026-11-13	a half opens 5 ticks after the frame it last took	honest frames refused of 25,602 from clients with drifting clocks	1894	0	0	zone_clock_check.c of the feed server; fixed sequence
+0	2026-11-13	a half opens 5 ticks after the frame it last took	honest frames refused on real sockets, four client threads	7 of 320	0 of 960	0	zone_net_check.c; this Mac; first run against three runs
+1	2026-11-13	one body crosses the wire: packets.sgd, two worlds in one process	parts of a body the viewer drew	0	21	21	tests/body_gate.gd on walk and idle, 894 ticks
+1	2026-11-13	one body crosses the wire	largest distance of a drawn part from the sender's 12 ticks before, mm	none	9.09		first line for bodies; mean 0.21 mm
+1	2026-11-13	one body crosses the wire	largest difference of a drawn part's rotation, milliradians	none	185		rotation has no rate on the wire
+1	2026-11-13	one body crosses the wire	share of a tick for codec, router, observers, curve and second follower	none	0.030	0.8 for the whole tick	interpreted tier, this Mac; leaves out the sender's physics
+1	2026-11-13	positions from a whole-number origin	largest error of a position 8 billion km from zero, micrometres	1230	0.82	under 17, a hair	tests/packets_gate.gd; before is the float control
+1	2026-11-13	one body crosses the wire	largest distance between the points of a drawn part's rotation star and the sender's, mm	none	14.6		arms of 5 cm; mean 0.29 mm; position and rotation in one number
+2	2026-11-13	four worlds in place of two, each sender judged by four parties	pairs of people who see each other	2	12	12	tests/world_gate.gd, 960 ticks; walk, idle, walk back, run
+2	2026-11-13	four worlds in place of two	planted parties named on real bodies	0 of 3	3 of 3	all	zone, sender and viewer; pairs fall to 9 under each
+2	2026-11-13	four worlds in place of two	mean distance of a drawn part from the sender's, mm	0.21	1.60		worse: a running clip and clips that turn round; largest 160 mm
+2	2026-11-13	four worlds in place of two	share of a tick for one world's wire path	0.030	0.027	0.8 for the whole tick	physics is 0.66 of a tick a world on the interpreted tier
+2	2026-11-13	draw three sends behind where the verdict of four parties is waited for	mean distance of a drawn part from the sender's, mm	1.60	0.48		delay 12 to 18 ticks; largest 160 to 34 mm; a judged point is known one send later than the plan held
+4	2026-11-13	the four as separate programs, sending by UDP to the relay process	pairs of people who see each other through real sockets	0	12	12	tools/clients.exs, 15 s, no load; 1,869 of 1,896 verdicts valid; mean 0.71 mm
+4	2026-11-13	the four as separate programs	pairs seeing with 16 people from the load generator beside them	none	0	12	the relay overran 144 ticks on this Mac and refused 1,777 frames; a finding, not a pass
+4	2026-11-13	the relay takes a burst of two and counts ticks by the wall	pairs seeing with 16 people from the load generator beside the four	0	12	12	tools/clients.exs; also 12 beside 64; the relay refused no frame
+4	2026-11-13	an observer gives its verdict from three reports when one party is silent	pairs seeing with one client's clock 2 percent fast	3	9	9	the three lost are that client's own views; in one process a silent client leaves 9 and is named
+2	2026-11-13	each body on its own thread, then the physics guest binary translated	seconds for the four-world gate of 15 s of the clock	45.7	19.4	15	interpreted one thread, 29.1 with four threads, 19.4 translated; the forward pass 10.0 to 4.1 ms; same results on every row
+4	2026-11-13	more relay processes; the relay on Linux on Fly	people one relay carries at full delivery with a p99 tick under 4 ms	68	512		Fly performance-8x, loopback, zones of four; 8 relays sent all datagrams of 4,096; mac clients reach a public relay, close lag untested

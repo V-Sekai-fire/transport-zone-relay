@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "interactor-presence-gates"
+abstract: "The gates that join the parts of the presence slice on a real body, with the videos and the ledger of what each rung moved."
+type: software
+authors:
+  - family-names: "Lee"
+    given-names: "K. S. Ernest (iFire)"
+license: MIT
+repository-code: "https://github.com/V-Sekai-fire/interactor-presence-gates"
+date-released: "2026-11-13"
