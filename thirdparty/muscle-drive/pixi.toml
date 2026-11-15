@@ -1,0 +1,18 @@
+[workspace]
+name = "muscle-drive"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.11.*"
+pip = "*"
+pytest = ">=9.2.0,<10"
+
+# paths follow the numbered repo-manifest layout (3-interactor/muscle-drive next to 3-interactor/musclemimic)
+[pypi-dependencies]
+musclemimic = { path = "../musclemimic", editable = true }
+musclemimic_models = { path = "../../5-repository/musclemimic_models", editable = true }
+mujoco = "==3.4.0"
+
+[tasks]
+test = "python -m pytest -q ../musclemimic/tests/test_ms_human_700_root.py"

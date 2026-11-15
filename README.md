@@ -44,3 +44,5 @@ MIT; see `LICENSE`.
 
 `thirdparty/fdb-sqlite` is a subtree of `V-Sekai-fire/datasource-store`, the SQLite VFS over FoundationDB. It keeps
 its own terms (Apache-2.0 OR MIT) and nothing in this repository calls it yet.
+
+`thirdparty/muscle-drive` is a subtree of `V-Sekai-fire/interactor-muscle-drive` at `f7e689d`, the code that fits, upsamples to 100 Hz and checks the floor of the motion clips that the four demo people play. It has no licence file of its own yet, so the MIT of this repository does not cover it. Two steps of the pipeline are not in it: `retarget_msh700.py` (`interactor-garment-proxy`, branch `dev/retarget-msh700`) and `scripts/msh700_trajectory.py` (`musclemimic`, branch `dev/msh700`). Nothing in this repository calls it.
