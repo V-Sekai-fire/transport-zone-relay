@@ -17,23 +17,24 @@ static int32_t i32(const uint8_t *p) {
 static int next(const uint8_t *d, size_t n, size_t at, rec_t *r) {
   static const size_t head[KINDS] = {0, 5, 5, 5, 5, 1, 1, 2}, tail[KINDS] = {0, 4, 1, 1, 0, 4, 4, 4};
   r->kind = d[at]; r->at = at; r->len = 0;
-  if (r->kind < JOIN || r->kind >= KINDS) return -1;
-  if (n - at < head[r->kind]) return -1;
-  if (r->kind == PUT || r->kind == FRAME) r->len = u16(d + at + 3);
+  if (r->kind < JOIN || r->kind >= KINDS) { return -1; }
+  if (n - at < head[r->kind]) { return -1; }
+  if (r->kind == PUT || r->kind == FRAME) { r->len = u16(d + at + 3); }
   r->body = at + head[r->kind];
-  if (n - r->body < r->len + tail[r->kind]) return -1;
+  if (n - r->body < r->len + tail[r->kind]) { return -1; }
   r->end = r->body + r->len + tail[r->kind];
   return 0;
 }
 static int differs(run_t *o, long want, long got) {
-  if (want == got) return 0;
+  if (want == got) { return 0; }
   snprintf(o->why, sizeof o->why, "want=%ld got=%ld", want, got);
   return 1;
 }
 static int frame_differs(run_t *o, const uint8_t *want, size_t wn, const uint8_t *got, size_t gn) {
   if (!got || wn != gn) { snprintf(o->why, sizeof o->why, "length want=%lu got=%lu", (unsigned long)wn, (unsigned long)gn); return 1; }
-  for (size_t i = 0; i < wn; i++)
+  for (size_t i = 0; i < wn; i++) {
     if (want[i] != got[i]) { snprintf(o->why, sizeof o->why, "byte %lu of %lu want=%u got=%u", (unsigned long)i, (unsigned long)wn, want[i], got[i]); return 1; }
+  }
   return 0;
 }
 static void replay(const uint8_t *d, size_t n, run_t *o) {
@@ -63,13 +64,14 @@ static void replay(const uint8_t *d, size_t n, run_t *o) {
 static long plant(uint8_t *d, size_t n, const char *what) {
   rec_t r;
   int payload = strcmp(what, "payload") == 0, kind = payload ? PUT : 0;
-  for (int k = JOIN; k < KINDS && !kind; k++)
-    if (strcmp(what, NAME[k]) == 0) kind = k;
-  if (!kind) return -1;
+  for (int k = JOIN; k < KINDS && !kind; k++) {
+    if (strcmp(what, NAME[k]) == 0) { kind = k; }
+  }
+  if (!kind) { return -1; }
   long i = 0;
   for (size_t at = sizeof MAGIC - 1; at < n && next(d, n, at, &r) == 0; at = r.end, i++) {
-    if (r.kind != kind || (kind == FRAME && r.len == 0)) continue;
-    if (payload && (r.len == 0 || d[r.end - 1] != 1)) continue;
+    if (r.kind != kind || (kind == FRAME && r.len == 0)) { continue; }
+    if (payload && (r.len == 0 || d[r.end - 1] != 1)) { continue; }
     size_t where = payload ? r.body : r.end - 1;
     d[where] ^= 1;
     printf("FLIP %s record=%ld offset=%lu\n", what, i, (unsigned long)where);
@@ -80,9 +82,9 @@ static long plant(uint8_t *d, size_t n, const char *what) {
 int main(int argc, char **argv) {
   const char *path = 0, *flip = 0;
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--flip") == 0) flip = "frame";
-    else if (strncmp(argv[i], "--flip=", 7) == 0) flip = argv[i] + 7;
-    else path = argv[i];
+    if (strcmp(argv[i], "--flip") == 0) { flip = "frame"; }
+    else if (strncmp(argv[i], "--flip=", 7) == 0) { flip = argv[i] + 7; }
+    else { path = argv[i]; }
   }
   FILE *f = path ? fopen(path, "rb") : 0;
   if (!f) { puts("RELAY RESULT: ERROR give a trace file that can be read, then --flip[=<kind>|payload]"); return 2; }

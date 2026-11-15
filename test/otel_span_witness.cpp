@@ -232,15 +232,15 @@ bool dec_event(const std::string &m, PbSpan *o) {
 			return false;
 		}
 		if (tag == 0x09) {
-			if (!r.fixed(&o->ev_time, 8)) return false;
+			if (!r.fixed(&o->ev_time, 8)) { return false; }
 		} else if (tag == 0x12) {
-			if (!r.bytes(&o->ev_name)) return false;
+			if (!r.bytes(&o->ev_name)) { return false; }
 		} else if (tag == 0x1A) {
 			PbAtt a;
-			if (!r.bytes(&s) || !dec_attr(s, &a)) return false;
+			if (!r.bytes(&s) || !dec_attr(s, &a)) { return false; }
 			(a.key == "exception.type" ? o->ev_type : o->ev_msg) = a.s;
 		} else if (tag == 0x20) {
-			if (!r.varint(&o->ev_dropped)) return false;
+			if (!r.varint(&o->ev_dropped)) { return false; }
 		} else {
 			return false;
 		}
@@ -257,38 +257,38 @@ bool dec_span(const std::string &m, PbSpan *o) {
 			return false;
 		}
 		switch (tag) {
-			case 0x0A: if (!r.bytes(&o->trace)) return false; break;
-			case 0x12: if (!r.bytes(&o->sid)) return false; break;
-			case 0x1A: if (!r.bytes(&s) || !s.empty()) return false; o->has_state = true; break;
-			case 0x22: if (!r.bytes(&o->parent)) return false; break;
-			case 0x2A: if (!r.bytes(&o->name)) return false; break;
-			case 0x30: if (!r.varint(&o->kind)) return false; break;
-			case 0x39: if (!r.fixed(&o->t0, 8)) return false; break;
-			case 0x41: if (!r.fixed(&o->t1, 8)) return false; break;
+			case 0x0A: if (!r.bytes(&o->trace)) { return false; } break;
+			case 0x12: if (!r.bytes(&o->sid)) { return false; } break;
+			case 0x1A: if (!r.bytes(&s) || !s.empty()) { return false; } o->has_state = true; break;
+			case 0x22: if (!r.bytes(&o->parent)) { return false; } break;
+			case 0x2A: if (!r.bytes(&o->name)) { return false; } break;
+			case 0x30: if (!r.varint(&o->kind)) { return false; } break;
+			case 0x39: if (!r.fixed(&o->t0, 8)) { return false; } break;
+			case 0x41: if (!r.fixed(&o->t1, 8)) { return false; } break;
 			case 0x4A: {
 				PbAtt a;
-				if (!r.bytes(&s) || !dec_attr(s, &a)) return false;
+				if (!r.bytes(&s) || !dec_attr(s, &a)) { return false; }
 				o->attrs.push_back(a);
 				break;
 			}
-			case 0x50: if (!r.varint(&v) || v != 0) return false; o->has_dropped_attrs = true; break;
-			case 0x5A: if (!r.bytes(&s) || !dec_event(s, o)) return false; break;
-			case 0x60: if (!r.varint(&v) || v != 0) return false; o->has_dropped_events = true; break;
-			case 0x70: if (!r.varint(&v) || v != 0) return false; o->has_dropped_links = true; break;
+			case 0x50: if (!r.varint(&v) || v != 0) { return false; } o->has_dropped_attrs = true; break;
+			case 0x5A: if (!r.bytes(&s) || !dec_event(s, o)) { return false; } break;
+			case 0x60: if (!r.varint(&v) || v != 0) { return false; } o->has_dropped_events = true; break;
+			case 0x70: if (!r.varint(&v) || v != 0) { return false; } o->has_dropped_links = true; break;
 			case 0x7A: {
-				if (!r.bytes(&s)) return false;
+				if (!r.bytes(&s)) { return false; }
 				Rd st = rd(s);
 				while (st.p < st.e) {
 					uint64_t t;
-					if (!st.varint(&t)) return false;
-					if (t == 0x12) { if (!st.bytes(&o->status_msg)) return false; }
-					else if (t == 0x18) { if (!st.varint(&o->status_code)) return false; }
-					else return false;
+					if (!st.varint(&t)) { return false; }
+					if (t == 0x12) { if (!st.bytes(&o->status_msg)) { return false; } }
+					else if (t == 0x18) { if (!st.varint(&o->status_code)) { return false; } }
+					else { return false; }
 				}
 				o->has_status = true;
 				break;
 			}
-			case 133: if (!r.fixed(&o->flags, 4)) return false; o->has_flags = true; break;
+			case 133: if (!r.fixed(&o->flags, 4)) { return false; } o->has_flags = true; break;
 			default: return false;
 		}
 	}

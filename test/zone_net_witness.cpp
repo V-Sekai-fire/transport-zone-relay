@@ -30,7 +30,7 @@ typedef std::chrono::steady_clock Clock;
 
 std::vector<uint8_t> frame(int id, int half, int seq) {
 	std::vector<uint8_t> f(1200);
-	for (size_t i = 0; i < f.size(); ++i) f[i] = static_cast<uint8_t>(id * 16 + seq * 5 + static_cast<int>(i));
+	for (size_t i = 0; i < f.size(); ++i) { f[i] = static_cast<uint8_t>(id * 16 + seq * 5 + static_cast<int>(i)); }
 	f[0] = static_cast<uint8_t>(id);
 	f[1] = static_cast<uint8_t>(half);
 	f[2] = static_cast<uint8_t>(seq);
@@ -100,7 +100,7 @@ Outcome play(const Case &c) {
 			struct sockaddr_in from;
 			socklen_t fl = sizeof from;
 			ssize_t r = recvfrom(fd[static_cast<size_t>(j)], buf, sizeof buf, MSG_DONTWAIT, reinterpret_cast<struct sockaddr *>(&from), &fl);
-			if (r < 0) break;
+			if (r < 0) { break; }
 			int half = static_cast<int>(ntohs(from.sin_port)) - static_cast<int>(base);
 			if (r != 1200 || buf[0] < 1 || buf[0] > 8 || (buf[1] != 0 && buf[1] != 1) || buf[2] > 1) {
 				bytes_ok = false;
@@ -108,8 +108,8 @@ Outcome play(const Case &c) {
 			}
 			int sender = buf[0] - 1, h = buf[1], seq = buf[2];
 			std::vector<uint8_t> want = frame(sender + 1, h, seq);
-			if (std::memcmp(buf, want.data(), 1200) != 0) bytes_ok = false;
-			if (half != h) bytes_ok = false; // the half a frame names is the socket it came from
+			if (std::memcmp(buf, want.data(), 1200) != 0) { bytes_ok = false; }
+			if (half != h) { bytes_ok = false; } // the half a frame names is the socket it came from
 			got.insert(std::make_tuple(j, sender, h, seq));
 		}
 		close(fd[static_cast<size_t>(j)]);
@@ -117,13 +117,14 @@ Outcome play(const Case &c) {
 	// What the doc says they get: every frame sent after all were seated reaches every other member of the zone, and the first
 	// frame of a member reaches the members who were seated before it. A zone is four members, in the order they were seated.
 	std::multiset<std::tuple<int, int, int, int>> want;
-	for (int j = 0; j < n; ++j)
+	for (int j = 0; j < n; ++j) {
 		for (int a = 0; a < n; ++a) {
-			if (a == j || a / 4 != j / 4) continue;
+			if (a == j || a / 4 != j / 4) { continue; }
 			want.insert(std::make_tuple(j, a, 0, 1));
 			want.insert(std::make_tuple(j, a, 1, 1));
-			if (a > j) want.insert(std::make_tuple(j, a, 0, 0));
+			if (a > j) { want.insert(std::make_tuple(j, a, 0, 0)); }
 		}
+	}
 	Outcome o;
 	o.exact = bytes_ok && got == want;
 	o.counts = rep.frames_in == static_cast<uint32_t>(3 * n) && rep.datagrams_out == want.size() && rep.refused == 0 && rep.strangers == 0 &&

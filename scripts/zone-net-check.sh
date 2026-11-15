@@ -16,8 +16,8 @@ opaque() {
     -e '^[0-9]+: +if \(!zr_put\(z, slot, half, dgram, \(size_t\)n\)\) \{ out->refused\+\+; return; \}$' \
     -e '^[0-9]+: +const uint8_t \*held = zr_frame\(z, v, \(slot > v \? slot - 1 : slot\) \* 2 \+ half, &len\);$' \
     -e '^[0-9]+: +sv\[ns\]\.iov_base = \(void \*\)held; sv\[ns\]\.iov_len = len;$' \
-    -e '^[0-9]+: +if \(sendto\(out_fd, held, len, 0, \(const struct sockaddr \*\)&who\[seated\[zi\]\[v\]\]\.a, sizeof who\[0\]\.a\) >= 0\) out->datagrams_out\+\+;$' \
-    -e '^[0-9]+: +for \(int i = 0; i < got; i\+\+\) take\(out, fd, half, dgram\[i\], \(ssize_t\)rm\[i\]\.msg_len, &froms\[i\]\);$' \
+    -e '^[0-9]+: +if \(sendto\(out_fd, held, len, 0, \(const struct sockaddr \*\)&who\[seated\[zi\]\[v\]\]\.a, sizeof who\[0\]\.a\) >= 0\) \{ out->datagrams_out\+\+; \}$' \
+    -e '^[0-9]+: +for \(int i = 0; i < got; i\+\+\) \{ take\(out, fd, half, dgram\[i\], \(ssize_t\)rm\[i\]\.msg_len, &froms\[i\]\); \}$' \
     -e '^[0-9]+: +ssize_t n = recvfrom\(fd\[half\], dgram, sizeof dgram, 0, \(struct sockaddr \*\)&from, &fl\);$' \
     -e '^[0-9]+: +take\(out, fd, half, dgram, n, &from\);$'
 }

@@ -26,19 +26,19 @@ struct Model {
 	uint64_t db = 0, day = 0;
 	int64_t day_start = 0;
 	int expect(int owner, int kind, uint32_t bytes, int64_t now) {
-		if (kind == 3) return 1;
-		if (kind < 0 || kind > 3) return 2;
-		if (kind != 2 && (owner < 0 || owner > 3)) return 3;
-		if (kind == 0 && static_cast<uint64_t>(data[owner]) + bytes > 100000) return 4;
-		if (kind == 1 && static_cast<uint64_t>(object[owner]) + bytes > 100000) return 4;
+		if (kind == 3) { return 1; }
+		if (kind < 0 || kind > 3) { return 2; }
+		if (kind != 2 && (owner < 0 || owner > 3)) { return 3; }
+		if (kind == 0 && static_cast<uint64_t>(data[owner]) + bytes > 100000) { return 4; }
+		if (kind == 1 && static_cast<uint64_t>(object[owner]) + bytes > 100000) { return 4; }
 		uint64_t after = db + bytes;
-		if (after > 256ull * 4096ull) return 5;
+		if (after > 256ull * 4096ull) { return 5; }
 		uint64_t used = day;
 		int64_t start = day_start;
 		if (now - start >= 86400) { used = 0; start = now; }
-		if (after + used > 32ull * 1048576ull) return 6;
-		if (kind == 0) data[owner] += bytes;
-		if (kind == 1) object[owner] += bytes;
+		if (after + used > 32ull * 1048576ull) { return 6; }
+		if (kind == 0) { data[owner] += bytes; }
+		if (kind == 1) { object[owner] += bytes; }
 		db = after;
 		day = used + after;
 		day_start = start;
@@ -110,13 +110,14 @@ Run run(const Case &c) {
 		zc_t before = z;
 		int want = m.expect(o.owner, o.kind, o.bytes, now);
 		int got = static_cast<int>(zc_admit(&z, o.owner, static_cast<zc_kind_t>(o.kind), o.bytes, now));
-		if (got != want) r.agrees = false;
-		if (got >= 0 && got < 7) r.saw[got] = true;
-		if (got != 0 && !same(z, before)) r.refusal_keeps = false;
-		if (got == 0 && o.kind == 3) r.pose_in = true;
-		if (z.db_bytes > 1048576u || z.day_bytes > 33554432ull) r.bounded = false;
-		for (int k = 0; k < 4; ++k)
-			if (z.data[k] > 100000u || z.object[k] > 100000u) r.bounded = false;
+		if (got != want) { r.agrees = false; }
+		if (got >= 0 && got < 7) { r.saw[got] = true; }
+		if (got != 0 && !same(z, before)) { r.refusal_keeps = false; }
+		if (got == 0 && o.kind == 3) { r.pose_in = true; }
+		if (z.db_bytes > 1048576u || z.day_bytes > 33554432ull) { r.bounded = false; }
+		for (int k = 0; k < 4; ++k) {
+			if (z.data[k] > 100000u || z.object[k] > 100000u) { r.bounded = false; }
+		}
 	}
 	return r;
 }
@@ -167,11 +168,11 @@ TEST_CASE("[caps] a save is due one second after the last, and never inside it")
 		zc_t z;
 		zc_init(&z);
 		int64_t now = 0;
-		if (!zc_due(&z, now)) return false;
+		if (!zc_due(&z, now)) { return false; }
 		for (const Op &o : c.ops) {
 			now += o.dt;
 			if (zc_admit(&z, o.owner, static_cast<zc_kind_t>(o.kind), o.bytes, now) == ZC_OK) {
-				if (zc_due(&z, now) || !zc_due(&z, now + 1) || zc_due(&z, now + 0)) return false;
+				if (zc_due(&z, now) || !zc_due(&z, now + 1) || zc_due(&z, now + 0)) { return false; }
 			}
 		}
 		return true;
