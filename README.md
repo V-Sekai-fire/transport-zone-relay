@@ -9,6 +9,7 @@ The zone relay in C: a state machine equal to the router model on a recorded tra
 - `src/zone_clock_check.c`: clients whose clocks are not the relay's.
 - `src/zone_serve.c` and `src/zone_load.c`: the relay as a process and the load generator that sends as clients would.
 - `docs/zone-relay.md` and `docs/zone-net.md`; `docs/zone-lod.md` holds the parked placeholders for levels of detail.
+- `.pre-commit-config.yaml` and `scripts/braces.py`: prek fails a pull request with an if, else, for, while or do that has no braces. `python3 scripts/braces.py FILE...` adds them, and changes nothing else.
 - `test/` and `docs/witness.md`: the witness-cpp properties of the span emitter, the caps, the state machine and the relay on sockets, each with planted builds that must fail.
 - `src/zone_caps.h` and `src/zone_caps.c`: the caps on what a zone saves, as constants and a checker, with `docs/zone-caps.md`. Nothing calls them yet.
 

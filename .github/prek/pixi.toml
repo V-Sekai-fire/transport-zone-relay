@@ -1,0 +1,10 @@
+[workspace]
+name = "prek"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[dependencies]
+prek = ">=0.5,<0.6"
+
+[tasks]
+prek = { cmd = "prek run --all-files", cwd = "../.." }
