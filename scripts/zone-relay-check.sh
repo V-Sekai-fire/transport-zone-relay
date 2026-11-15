@@ -10,7 +10,7 @@ STRICT="-std=c99 -Wall -Wextra -Werror -pedantic -O2"
 opaque() {
   ! grep -n -E 'store|bytes' "$1" | grep -v -E \
     -e '^[0-9]+: +memset\(z->store\[s \* 2( \+ 1)?\], 0, sizeof z->store\[s \* 2( \+ 1)?\]\);$' \
-    -e '^[0-9]+: +if \(len > 0\) memcpy\(z->store\[at\], bytes, len\);$' \
+    -e '^[0-9]+: +if \(len > 0\) \{ memcpy\(z->store\[at\], bytes, len\); \}$' \
     -e '^[0-9]+: +return z->store\[at\];$' \
     -e '^[0-9]+:int zr_put\(zr_zone_t \*z, int slot, int half, const void \*bytes, size_t len\) \{$'
 }

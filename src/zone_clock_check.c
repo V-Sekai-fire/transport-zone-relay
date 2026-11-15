@@ -18,10 +18,11 @@ int main(void) {
     for (int s = 0; s < ZR_SLOTS; s++) {
       lcg = (lcg * 1103515245UL + 12345UL) & 0x7fffffffUL;
       long jitter = (long)(lcg >> 8) % 801 - 400;
-      if ((next[s] + jitter) / MILLI > t) continue;
-      for (int half = 0; half < 2; half++) { sent++; if (!zr_put(&z, s, half, frame, sizeof frame)) refused++; }
-      if (sent % 200 == 0)
-        for (int k = 0; k < 3; k++) { floods++; if (!zr_put(&z, s, 0, frame, sizeof frame)) floods_refused++; }
+      if ((next[s] + jitter) / MILLI > t) { continue; }
+      for (int half = 0; half < 2; half++) { sent++; if (!zr_put(&z, s, half, frame, sizeof frame)) { refused++; } }
+      if (sent % 200 == 0) {
+        for (int k = 0; k < 3; k++) { floods++; if (!zr_put(&z, s, 0, frame, sizeof frame)) { floods_refused++; } }
+      }
       next[s] += ZR_SEND_TICKS * MILLI + ZR_SEND_TICKS * skew_ppm[s] / 1000;
     }
     zr_tick(&z);
