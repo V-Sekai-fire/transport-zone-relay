@@ -1,4 +1,4 @@
-/* Sends frames as PEOPLE clients would and reads every reply; see docs/fly.md.
+/* Sends frames as PEOPLE clients would and reads every reply; see docs/zone-net.md.
  * Each frame carries its send time, so a client that receives another's frame measures the round
  * trip through the relay on one clock. Delivery is counted at the receivers, not at sendto. */
 #define _POSIX_C_SOURCE 200809L
