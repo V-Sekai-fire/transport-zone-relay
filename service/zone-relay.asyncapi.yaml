@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 K. S. Ernest (iFire) Lee
+# SPDX-License-Identifier: MIT
+asyncapi: 3.1.0
+info:
+  title: Zone relay
+  version: 0.1.0
+  description: >
+    The zone relay hands each member of a zone the frames of the others and reads none of them (RFD66606-2493). A person sends two
+    frames at a send: the first carries parts 0 to 11 and the second parts 12 to 20 with three dummy Packets, each 12 Packets of 100
+    bytes. The relay cannot read a frame to tell the halves apart, so it listens on two UDP ports: the first half to PORT and the
+    second to PORT+1; the socket a datagram arrives on is its half. A person is known by the address a datagram came from (a stand-in:
+    the home server will name members and their addresses, and a datagram from an unnamed address will be dropped). People are numbered
+    in the order they appear, person p belongs to zone p / 4, and a zone seats at most 4. The relay ticks at 64 Hz on its own clock
+    and counts nothing of a sender's clock. A half takes one frame in 5 ticks with a burst of two; a frame that comes sooner is counted
+    and not stored. A datagram over 1,472 bytes, a fifth person for a zone and a frame the rules refuse are counted and not answered.
+    A taken frame is sent at once, byte for byte, from the socket of the same half, to the other seated members of the zone, and never
+    to its sender; a viewer therefore gets six frames an interval, two from each of the three others. The relay forges nothing and can
+    only drop or delay. Documented from docs/zone-net.md, src/zone_relay.h and src/zone_net.c of this repository.
+  license:
+    name: MIT
+servers:
+  relay:
+    host: '{host}:{port}'
+    protocol: udp
+    description: Two UDP sockets, PORT and PORT+1, on one host. udp is not an AsyncAPI binding; the protocol name is plain.
+    variables:
+      host:
+        default: 127.0.0.1
+      port:
+        default: '9000'
+        description: The first-half port; the second half is port + 1.
+defaultContentType: application/octet-stream
+channels:
+  firstHalf:
+    address: PORT
+    description: Frames carrying parts 0 to 11, from each person to the relay, and the same frames on to the other members from this socket.
+    messages:
+      firstFrame: {$ref: '#/components/messages/firstFrame'}
+  secondHalf:
+    address: PORT+1
+    description: Frames carrying parts 12 to 20 and three dummy Packets, from each person to the relay, and on to the other members from this socket.
+    messages:
+      secondFrame: {$ref: '#/components/messages/secondFrame'}
+operations:
+  takeFirstHalf:
+    action: receive
+    channel: {$ref: '#/channels/firstHalf'}
+  takeSecondHalf:
+    action: receive
+    channel: {$ref: '#/channels/secondHalf'}
+  handOnFirstHalf:
+    action: send
+    channel: {$ref: '#/channels/firstHalf'}
+  handOnSecondHalf:
+    action: send
+    channel: {$ref: '#/channels/secondHalf'}
+components:
+  messages:
+    firstFrame:
+      summary: One datagram of 12 Packets of 100 bytes, parts 0 to 11; at most 1,472 bytes
+      payload: {$ref: '#/components/schemas/frame'}
+    secondFrame:
+      summary: One datagram of 12 Packets of 100 bytes, parts 12 to 20 and three dummy Packets; at most 1,472 bytes
+      payload: {$ref: '#/components/schemas/frame'}
+  schemas:
+    frame:
+      type: string
+      description: >
+        The bytes of one datagram, 1,200 in a full frame and never more than 1,472. The relay does not read, decode, compress or judge
+        them; it holds no key. The Packet layout is the contract-entity-packet wire (RFD66606-2436), judged by the viewers and not here.
